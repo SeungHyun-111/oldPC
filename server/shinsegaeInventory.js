@@ -5,6 +5,7 @@ const DETAIL_URL = 'https://www.shinsegaetvshopping.com/display/detail'
 const maxSnapshots = 60
 const detailState = new Map()
 const windowMs = maxSnapshots * 60 * 1000
+const endBufferMs = 60 * 1000
 
 function parseNumber(value) {
   const normalized = String(value ?? '').replace(/[^\d.-]/g, '')
@@ -161,7 +162,7 @@ function getScheduleWindow(item, now = new Date()) {
 }
 
 function isActiveAt(product, now = Date.now()) {
-  return product.broadcastStartAt <= now && now < product.broadcastEndAt
+  return product.broadcastStartAt <= now && now < product.broadcastEndAt - endBufferMs
 }
 
 function intersectsWindow(product, windowStart, windowEnd) {

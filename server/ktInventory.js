@@ -4,6 +4,7 @@ const BASE_URL = 'https://www.kshop.co.kr'
 const maxSnapshots = 60
 const detailState = new Map()
 const windowMs = maxSnapshots * 60 * 1000
+const endBufferMs = 60 * 1000
 const stockKeys = new Set([
   'briefOrderAbleCnt',
   'orderAbleCnt',
@@ -188,7 +189,7 @@ function getScheduleWindow(item, now = new Date()) {
 }
 
 function isActiveAt(product, now = Date.now()) {
-  return product.broadcastStartAt <= now && now < product.broadcastEndAt
+  return product.broadcastStartAt <= now && now < product.broadcastEndAt - endBufferMs
 }
 
 function intersectsWindow(product, windowStart, windowEnd) {

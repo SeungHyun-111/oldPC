@@ -6,6 +6,7 @@ import { scheduleSources } from '../sources/scheduleSources'
 const apiBaseUrl = import.meta.env.VITE_OLDPC_API_BASE_URL || 'http://127.0.0.1:4174'
 const publishIntervalMs = Number(import.meta.env.VITE_OLDPC_PUBLISH_INTERVAL_MS || 60_000)
 const historyWindowMs = 60 * 60 * 1000
+const endBufferMs = 60 * 1000
 const inventorySources = [
   { key: 'skstoa', endpoint: '/api/skstoa/inventory' },
   { key: 'shinsegae', endpoint: '/api/shinsegae/inventory' },
@@ -31,6 +32,21 @@ function getRecentHistory(history, collectedAt) {
 
 function mergeInventoryProduct(nextProduct, previousProduct, collectedAt) {
   if (!previousProduct) return nextProduct
+
+  if (collectedAt >= (nextProduct.broadcastEndAt || previousProduct.broadcastEndAt || 0) - endBufferMs) {
+    return {
+      ...previousProduct,
+      ...nextProduct,
+      currentStock: previousProduct.currentStock,
+      totalStock: previousProduct.totalStock,
+      lastStock: previousProduct.lastStock,
+      soldDelta: 0,
+      estimatedSold: previousProduct.estimatedSold || 0,
+      estimatedRevenue: previousProduct.estimatedRevenue || 0,
+      history: getRecentHistory(previousProduct.history, collectedAt),
+      collectedAt,
+    }
+  }
 
   const price = nextProduct.price || previousProduct.price || 0
   const currentStock = nextProduct.currentStock || nextProduct.totalStock || 0
