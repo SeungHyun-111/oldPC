@@ -66,6 +66,28 @@ function getLastSegmentPoint(segments) {
   return lastSegment?.at(-1) || null
 }
 
+function getTimeX(value, chartStart, chartEnd, plot) {
+  return plot.left + ((value - chartStart) / (chartEnd - chartStart)) * plot.width
+}
+
+function getLabelPosition(product, labelPoint, chartStart, chartEnd, plot, labelWidth) {
+  if (!labelPoint) return { x: 0, y: 0 }
+
+  const programStartX = Math.max(plot.left + 6, getTimeX(product.broadcastStartAt, chartStart, chartEnd, plot) + 6)
+  const programEndX = Math.min(plot.left + plot.width - 6, getTimeX(product.broadcastEndAt, chartStart, chartEnd, plot) - 6)
+  const programWidth = Math.max(0, programEndX - programStartX)
+  const fitsInsideProgram = programWidth >= labelWidth
+  const preferredX = labelPoint.x + 12
+  const fallbackX = labelPoint.x - labelWidth - 12
+
+  const minX = fitsInsideProgram ? programStartX : plot.left + 6
+  const maxX = fitsInsideProgram ? programEndX - labelWidth : plot.left + plot.width - labelWidth - 6
+  const x = Math.min(maxX, Math.max(minX, preferredX <= maxX ? preferredX : fallbackX))
+  const y = Math.max(plot.top + 10, Math.min(plot.top + plot.height - 8, labelPoint.y - 10))
+
+  return { x, y }
+}
+
 function RevenueChart({ products, collectedAt }) {
   const [tooltip, setTooltip] = useState(null)
   const width = 970
@@ -141,10 +163,7 @@ function RevenueChart({ products, collectedAt }) {
           const color = getProductColor(index)
           const segments = getLineSegments(product, chartStart, chartEnd, plot, maxValue)
           const labelPoint = getLastSegmentPoint(segments)
-          const labelX = labelPoint
-            ? Math.min(plot.left + plot.width - labelWidth - 6, Math.max(plot.left + 6, labelPoint.x + 12))
-            : 0
-          const labelY = labelPoint ? Math.max(plot.top + 10, Math.min(plot.top + plot.height - 8, labelPoint.y - 10)) : 0
+          const labelPosition = getLabelPosition(product, labelPoint, chartStart, chartEnd, plot, labelWidth)
 
           return (
             <g key={product.productId}>
@@ -177,10 +196,10 @@ function RevenueChart({ products, collectedAt }) {
               ))}
               {labelPoint ? (
                 <g>
-                  <line className="labelGuide" x1={labelPoint.x} x2={labelX} y1={labelPoint.y} y2={labelY} />
-                  <rect className="lineLabelBox" x={labelX} y={labelY - 14} width={labelWidth} height={labelHeight} rx="5" />
-                  <circle cx={labelX + 9} cy={labelY - 3} r="3" fill={color} />
-                  <text className="lineLabelText" x={labelX + 17} y={labelY + 1}>
+                  <line className="labelGuide" x1={labelPoint.x} x2={labelPosition.x} y1={labelPoint.y} y2={labelPosition.y} />
+                  <rect className="lineLabelBox" x={labelPosition.x} y={labelPosition.y - 14} width={labelWidth} height={labelHeight} rx="5" />
+                  <circle cx={labelPosition.x + 9} cy={labelPosition.y - 3} r="3" fill={color} />
+                  <text className="lineLabelText" x={labelPosition.x + 17} y={labelPosition.y + 1}>
                     {getDisplayName(product).slice(0, 21)}
                   </text>
                 </g>
