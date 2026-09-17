@@ -247,6 +247,11 @@
   padding: 12px;
 }
 
+.combinedDashboard {
+  grid-template-columns: minmax(0, 1fr) minmax(340px, 0.34fr);
+  align-items: stretch;
+}
+
 .panel {
   min-height: 260px;
   border: 1px solid rgba(148, 163, 184, 0.22);
@@ -308,7 +313,7 @@
 
 .revenueChart {
   width: 100%;
-  height: 316px;
+  height: 340px;
   min-height: 0;
   display: block;
   overflow: visible;
@@ -343,6 +348,15 @@
   filter: drop-shadow(0 6px 12px rgba(0, 0, 0, 0.28));
 }
 
+.totalRevenueLine {
+  fill: none;
+  stroke: #facc15;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 4.5;
+  filter: drop-shadow(0 8px 16px rgba(250, 204, 21, 0.22));
+}
+
 .revenueDot {
   stroke: #111827;
   stroke-width: 1.5;
@@ -357,6 +371,12 @@
 .tickText {
   fill: #94a3b8;
   font-size: 10px;
+  font-weight: 800;
+}
+
+.axisText {
+  fill: #94a3b8;
+  font-size: 9px;
   font-weight: 800;
 }
 
@@ -401,6 +421,10 @@
   max-height: 330px;
   overflow: auto;
   padding: 10px;
+}
+
+.combinedProducts {
+  max-height: 532px;
 }
 
 .metricItem {
@@ -493,7 +517,8 @@
     min-height: 58px;
   }
 
-  .dashboardGrid {
+  .dashboardGrid,
+  .combinedDashboard {
     grid-template-columns: 1fr;
     width: 100%;
   }

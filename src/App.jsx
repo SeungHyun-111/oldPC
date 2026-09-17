@@ -1,7 +1,7 @@
 import { ScheduleStrip } from './components/ScheduleStrip'
-import { RevenueDashboard, SkRevenueDashboard } from './components/SkRevenueDashboard'
+import { CombinedRevenueDashboard } from './components/SkRevenueDashboard'
 import { useLocalRtdbPublisher } from './hooks/useLocalRtdbPublisher'
-import { useChannelInventory, useSkInventory } from './hooks/useSkInventory'
+import { useChannelInventory } from './hooks/useSkInventory'
 import { useSchedules } from './hooks/useSchedules'
 import { scheduleSources } from './sources/scheduleSources'
 import './App.css'
@@ -9,7 +9,7 @@ import './App.css'
 function App() {
   const publisher = useLocalRtdbPublisher()
   const schedules = useSchedules()
-  const skInventory = useSkInventory()
+  const skInventory = useChannelInventory('skstoa', 'SK')
   const shinsegaeInventory = useChannelInventory('shinsegae', '신세계')
   const ktInventory = useChannelInventory('ktalpha', 'K쇼핑')
 
@@ -30,15 +30,13 @@ function App() {
           displayFilter={source.displayFilter}
         />
       ))}
-      <section className="dashboardGrid" aria-label="실시간 현황">
-        <SkRevenueDashboard inventory={skInventory} />
-      </section>
-      <section className="dashboardGrid" aria-label="신세계 실시간 현황">
-        <RevenueDashboard inventory={shinsegaeInventory} label="신세계" />
-      </section>
-      <section className="dashboardGrid" aria-label="K쇼핑 실시간 현황">
-        <RevenueDashboard inventory={ktInventory} label="K쇼핑" />
-      </section>
+      <CombinedRevenueDashboard
+        inventories={[
+          { label: 'SK', inventory: skInventory },
+          { label: '신세계', inventory: shinsegaeInventory },
+          { label: 'K쇼핑', inventory: ktInventory },
+        ]}
+      />
     </main>
   )
 }

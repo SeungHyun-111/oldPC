@@ -5,7 +5,6 @@ import { scheduleSources } from '../sources/scheduleSources'
 
 const apiBaseUrl = import.meta.env.VITE_OLDPC_API_BASE_URL || 'http://127.0.0.1:4174'
 const publishIntervalMs = Number(import.meta.env.VITE_OLDPC_PUBLISH_INTERVAL_MS || 60_000)
-const historyWindowMs = 60 * 60 * 1000
 const endBufferMs = 60 * 1000
 const inventorySources = [
   { key: 'skstoa', endpoint: '/api/skstoa/inventory' },
@@ -25,9 +24,8 @@ async function fetchJson(path) {
   return payload
 }
 
-function getRecentHistory(history, collectedAt) {
-  const windowStart = collectedAt - historyWindowMs
-  return (history || []).filter((point) => point.collectedAt >= windowStart)
+function getHistory(history) {
+  return history || []
 }
 
 function mergeInventoryProduct(nextProduct, previousProduct, collectedAt) {
@@ -43,7 +41,7 @@ function mergeInventoryProduct(nextProduct, previousProduct, collectedAt) {
       soldDelta: 0,
       estimatedSold: previousProduct.estimatedSold || 0,
       estimatedRevenue: previousProduct.estimatedRevenue || 0,
-      history: getRecentHistory(previousProduct.history, collectedAt),
+      history: getHistory(previousProduct.history),
       collectedAt,
     }
   }
@@ -54,7 +52,7 @@ function mergeInventoryProduct(nextProduct, previousProduct, collectedAt) {
   const soldDelta = Math.max(previousStock - currentStock, 0)
   const estimatedSold = (previousProduct.estimatedSold || 0) + soldDelta
   const estimatedRevenue = estimatedSold * price
-  const history = getRecentHistory(previousProduct.history, collectedAt)
+  const history = getHistory(previousProduct.history)
 
   history.push({
     collectedAt,
@@ -75,7 +73,7 @@ function mergeInventoryProduct(nextProduct, previousProduct, collectedAt) {
     soldDelta,
     estimatedSold,
     estimatedRevenue,
-    history: history.slice(-60),
+    history,
     collectedAt,
   }
 }
@@ -90,9 +88,9 @@ function mergeInventoryPayload(nextInventory, previousInventory) {
     : (previousInventory?.products || [])
         .map((product) => ({
           ...product,
-          history: getRecentHistory(product.history, collectedAt),
+          history: getHistory(product.history),
         }))
-        .filter((product) => product.history.length || product.broadcastEndAt >= collectedAt - historyWindowMs)
+        .filter((product) => product.history.length || product.broadcastEndAt >= collectedAt)
 
   return {
     ...nextInventory,

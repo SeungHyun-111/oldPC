@@ -1,6 +1,10 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 
-const chartMinutes = 60
+const channelColors = {
+  SK: '#38bdf8',
+  신세계: '#fb923c',
+  K쇼핑: '#34d399',
+}
 
 function formatWon(value) {
   return `${Math.round(value || 0).toLocaleString()}원`
@@ -15,49 +19,8 @@ function formatTime(value) {
   return new Date(value).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })
 }
 
-function getProductColor(index) {
-  const colors = ['#38bdf8', '#fb923c', '#34d399', '#f472b6', '#facc15', '#a78bfa', '#60a5fa', '#f87171']
-  return colors[index % colors.length]
-}
-
-function isInsideBroadcast(product, collectedAt) {
-  return product.broadcastStartAt <= collectedAt && collectedAt <= product.broadcastEndAt
-}
-
 function getDisplayName(product) {
   return (product.productName || product.productId || '').replace(/^\[[^\]]+\]/, '').trim()
-}
-
-function getMinuteRevenue(point, product) {
-  return (point.soldDelta || 0) * (product.price || 0)
-}
-
-function getPointPosition(point, product, chartStart, chartEnd, plot, maxValue) {
-  const x = plot.left + ((point.collectedAt - chartStart) / (chartEnd - chartStart)) * plot.width
-  const minuteRevenue = getMinuteRevenue(point, product)
-  const y = plot.top + plot.height - (minuteRevenue / Math.max(maxValue, 1)) * plot.height
-  return { ...point, minuteRevenue, x, y }
-}
-
-function getLineSegments(product, chartStart, chartEnd, plot, maxValue) {
-  const segments = []
-  let current = []
-
-  for (const point of product.history || []) {
-    const inWindow = chartStart <= point.collectedAt && point.collectedAt <= chartEnd
-    const active = inWindow && isInsideBroadcast(product, point.collectedAt)
-
-    if (!active) {
-      if (current.length) segments.push(current)
-      current = []
-      continue
-    }
-
-    current.push(getPointPosition(point, product, chartStart, chartEnd, plot, maxValue))
-  }
-
-  if (current.length) segments.push(current)
-  return segments
 }
 
 function makePath(points) {
@@ -66,65 +29,76 @@ function makePath(points) {
   return points.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`).join(' ')
 }
 
-function getLastSegmentPoint(segments) {
-  const lastSegment = segments.at(-1)
-  return lastSegment?.at(-1) || null
+function normalizeProducts(inventories) {
+  return inventories.flatMap(({ label, inventory }) =>
+    (inventory.products || []).map((product) => ({
+      ...product,
+      channel: label,
+      channelColor: channelColors[label] || '#a78bfa',
+      rowId: `${label}-${product.productId}`,
+    })),
+  )
 }
 
-function getTimeX(value, chartStart, chartEnd, plot) {
-  return plot.left + ((value - chartStart) / (chartEnd - chartStart)) * plot.width
+function buildTotalSeries(products) {
+  const events = products
+    .flatMap((product) =>
+      (product.history || []).map((point) => ({
+        collectedAt: point.collectedAt,
+        productKey: product.rowId,
+        revenue: point.estimatedRevenue || 0,
+        sold: point.estimatedSold || 0,
+      })),
+    )
+    .filter((event) => event.collectedAt)
+    .sort((a, b) => a.collectedAt - b.collectedAt)
+
+  const latestByProduct = new Map()
+  const seriesByTime = new Map()
+
+  for (const event of events) {
+    latestByProduct.set(event.productKey, { revenue: event.revenue, sold: event.sold })
+    const totals = [...latestByProduct.values()].reduce(
+      (sum, product) => ({
+        revenue: sum.revenue + product.revenue,
+        sold: sum.sold + product.sold,
+      }),
+      { revenue: 0, sold: 0 },
+    )
+    seriesByTime.set(event.collectedAt, { collectedAt: event.collectedAt, ...totals })
+  }
+
+  return [...seriesByTime.values()].sort((a, b) => a.collectedAt - b.collectedAt)
 }
 
-function getLabelPosition(product, labelPoint, chartStart, chartEnd, plot, labelWidth) {
-  if (!labelPoint) return { x: 0, y: 0 }
-
-  const programStartX = Math.max(plot.left + 6, getTimeX(product.broadcastStartAt, chartStart, chartEnd, plot) + 6)
-  const programEndX = Math.min(plot.left + plot.width - 6, getTimeX(product.broadcastEndAt, chartStart, chartEnd, plot) - 6)
-  const programWidth = Math.max(0, programEndX - programStartX)
-  const fitsInsideProgram = programWidth >= labelWidth
-  const preferredX = labelPoint.x + 12
-  const fallbackX = labelPoint.x - labelWidth - 12
-
-  const minX = fitsInsideProgram ? programStartX : plot.left + 6
-  const maxX = fitsInsideProgram ? programEndX - labelWidth : plot.left + plot.width - labelWidth - 6
-  const x = Math.min(maxX, Math.max(minX, preferredX <= maxX ? preferredX : fallbackX))
-  const y = Math.max(plot.top + 10, Math.min(plot.top + plot.height - 8, labelPoint.y - 10))
-
-  return { x, y }
-}
-
-function RevenueChart({ label, products, collectedAt }) {
+function CombinedRevenueChart({ products, collectedAt }) {
   const [tooltip, setTooltip] = useState(null)
   const width = 970
-  const height = 300
+  const height = 320
   const plot = {
-    left: 30,
-    top: 22,
-    width: 922,
-    height: 232,
+    left: 42,
+    top: 24,
+    width: 900,
+    height: 238,
   }
-  const labelWidth = 224
-  const labelHeight = 22
-  const tooltipWidth = 178
-  const tooltipHeight = 54
-  const latestPointAt = Math.max(0, ...products.flatMap((product) => (product.history || []).map((point) => point.collectedAt || 0)))
-  const now = collectedAt || latestPointAt
-  const chartEnd = now
-  const chartStart = chartEnd - chartMinutes * 60 * 1000
-  const visibleMinuteRevenues = products.flatMap((product) =>
-    (product.history || [])
-      .filter((point) => chartStart <= point.collectedAt && point.collectedAt <= chartEnd && isInsideBroadcast(product, point.collectedAt))
-      .map((point) => getMinuteRevenue(point, product)),
+  const tooltipWidth = 176
+  const tooltipHeight = 52
+  const series = useMemo(() => buildTotalSeries(products), [products])
+  const latestAt = collectedAt || series.at(-1)?.collectedAt || 0
+  const firstAt = series[0]?.collectedAt || latestAt - 10 * 60 * 1000
+  const chartStart = firstAt === latestAt ? latestAt - 10 * 60 * 1000 : firstAt
+  const chartEnd = latestAt
+  const maxValue = Math.max(1, ...series.map((point) => point.revenue)) * 1.12
+  const points = series.map((point) => ({
+    ...point,
+    x: plot.left + ((point.collectedAt - chartStart) / Math.max(chartEnd - chartStart, 1)) * plot.width,
+    y: plot.top + plot.height - (point.revenue / maxValue) * plot.height,
+  }))
+  const tickCount = 6
+  const timeTicks = Array.from(
+    { length: tickCount },
+    (_, index) => chartStart + (index / Math.max(tickCount - 1, 1)) * (chartEnd - chartStart),
   )
-  const maxValue = Math.max(1, ...visibleMinuteRevenues) * 1.18
-  const timeTicks = Array.from({ length: 7 }, (_, index) => chartStart + index * 10 * 60 * 1000)
-  const broadcastEndMarkers = products
-    .map((product, index) => ({
-      productId: product.productId,
-      color: getProductColor(index),
-      endAt: product.broadcastEndAt,
-    }))
-    .filter((marker) => chartStart <= marker.endAt && marker.endAt <= chartEnd)
 
   return (
     <div className="chartWrap">
@@ -133,150 +107,112 @@ function RevenueChart({ label, products, collectedAt }) {
         viewBox={`0 0 ${width} ${height}`}
         preserveAspectRatio="none"
         role="img"
-        aria-label={`${label} 추정매출 60분 그래프`}
+        aria-label="3사 총 주문금액 그래프"
       >
         {[0, 1, 2, 3, 4].map((line) => {
           const y = plot.top + (plot.height / 4) * line
-          return <line className="gridLine" x1={plot.left} x2={plot.left + plot.width} y1={y} y2={y} key={line} />
+          const value = maxValue - (maxValue / 4) * line
+          return (
+            <g key={line}>
+              <line className="gridLine" x1={plot.left} x2={plot.left + plot.width} y1={y} y2={y} />
+              <text className="axisText" x={plot.left - 8} y={y + 3} textAnchor="end">
+                {Math.round(value / 10000).toLocaleString()}만
+              </text>
+            </g>
+          )
         })}
         {timeTicks.map((tick) => {
-          const x = plot.left + ((tick - chartStart) / (chartEnd - chartStart)) * plot.width
+          const x = plot.left + ((tick - chartStart) / Math.max(chartEnd - chartStart, 1)) * plot.width
           return (
             <g key={tick}>
               <line className="gridLine vertical" x1={x} x2={x} y1={plot.top} y2={plot.top + plot.height} />
-              <text className="tickText" x={x} y={plot.top + plot.height + 23} textAnchor="middle">
+              <text className="tickText" x={x} y={plot.top + plot.height + 24} textAnchor="middle">
                 {formatTime(tick)}
               </text>
             </g>
           )
         })}
-        {broadcastEndMarkers.map((marker) => {
-          const x = plot.left + ((marker.endAt - chartStart) / (chartEnd - chartStart)) * plot.width
-          return (
-            <line
-              className="broadcastEndLine"
-              x1={x}
-              x2={x}
-              y1={plot.top}
-              y2={plot.top + plot.height}
-              stroke={marker.color}
-              key={`${marker.productId}-${marker.endAt}`}
-            />
-          )
-        })}
-        {products.map((product, index) => {
-          const color = getProductColor(index)
-          const segments = getLineSegments(product, chartStart, chartEnd, plot, maxValue)
-          const labelPoint = getLastSegmentPoint(segments)
-          const labelPosition = getLabelPosition(product, labelPoint, chartStart, chartEnd, plot, labelWidth)
-
-          return (
-            <g key={product.productId}>
-              {segments.map((segment, segmentIndex) => (
-                <path className="revenueLine" d={makePath(segment)} stroke={color} key={segmentIndex} />
-              ))}
-              {segments.flat().map((point, pointIndex) => (
-                <circle
-                  className="revenueDot"
-                  cx={point.x}
-                  cy={point.y}
-                  r="3.8"
-                  fill={color}
-                  key={pointIndex}
-                  onMouseEnter={() => {
-                    const tooltipX = Math.min(width - tooltipWidth - 8, Math.max(8, point.x + 12))
-                    const tooltipY = Math.min(height - tooltipHeight - 8, Math.max(8, point.y - tooltipHeight - 10))
-                    setTooltip({
-                      x: tooltipX,
-                      y: tooltipY,
-                      time: formatTime(point.collectedAt),
-                      soldDelta: point.soldDelta || 0,
-                      amount: point.minuteRevenue || 0,
-                      productName: getDisplayName(product),
-                    })
-                  }}
-                  onMouseLeave={() => setTooltip(null)}
-                />
-              ))}
-              {labelPoint ? (
-                <g>
-                  <line className="labelGuide" x1={labelPoint.x} x2={labelPosition.x} y1={labelPoint.y} y2={labelPosition.y} />
-                  <rect className="lineLabelBox" x={labelPosition.x} y={labelPosition.y - 14} width={labelWidth} height={labelHeight} rx="5" />
-                  <circle cx={labelPosition.x + 9} cy={labelPosition.y - 3} r="3" fill={color} />
-                  <text className="lineLabelText" x={labelPosition.x + 17} y={labelPosition.y + 1}>
-                    {getDisplayName(product).slice(0, 21)}
-                  </text>
-                </g>
-              ) : null}
-            </g>
-          )
-        })}
+        <path className="totalRevenueLine" d={makePath(points)} />
+        {points.map((point) => (
+          <circle
+            className="revenueDot"
+            cx={point.x}
+            cy={point.y}
+            r="4"
+            fill="#facc15"
+            key={point.collectedAt}
+            onMouseEnter={() => {
+              const tooltipX = Math.min(width - tooltipWidth - 8, Math.max(8, point.x + 12))
+              const tooltipY = Math.min(height - tooltipHeight - 8, Math.max(8, point.y - tooltipHeight - 10))
+              setTooltip({
+                x: tooltipX,
+                y: tooltipY,
+                time: formatTime(point.collectedAt),
+                amount: point.revenue,
+                sold: point.sold,
+              })
+            }}
+            onMouseLeave={() => setTooltip(null)}
+          />
+        ))}
         {tooltip ? (
           <g className="chartTooltip">
             <rect x={tooltip.x} y={tooltip.y} width={tooltipWidth} height={tooltipHeight} rx="6" />
-            <text x={tooltip.x + 10} y={tooltip.y + 17}>{tooltip.productName.slice(0, 18)}</text>
-            <text x={tooltip.x + 10} y={tooltip.y + 34}>
-              {tooltip.time} / 분당 {formatNumber(tooltip.soldDelta)}건
-            </text>
+            <text x={tooltip.x + 10} y={tooltip.y + 18}>{tooltip.time}</text>
+            <text x={tooltip.x + 10} y={tooltip.y + 35}>주문 {formatNumber(tooltip.sold)}건</text>
             <text x={tooltip.x + 10} y={tooltip.y + 49}>{formatWon(tooltip.amount)}</text>
           </g>
         ) : null}
       </svg>
+      {!series.length ? <div className="emptyPanel">매출 수집 데이터 대기 중</div> : null}
     </div>
   )
 }
 
-export function RevenueDashboard({ inventory, label = inventory.broadcaster || '채널' }) {
-  const products = inventory.products || []
-  const collectedAt = formatTime(inventory.collectedAt)
+export function CombinedRevenueDashboard({ inventories }) {
+  const products = useMemo(() => normalizeProducts(inventories), [inventories])
+  const latestCollectedAt = Math.max(0, ...inventories.map(({ inventory }) => inventory.collectedAt || 0))
+  const totals = products.reduce(
+    (sum, product) => ({
+      estimatedSold: sum.estimatedSold + (product.estimatedSold || 0),
+      estimatedRevenue: sum.estimatedRevenue + (product.estimatedRevenue || 0),
+      soldDelta: sum.soldDelta + (product.soldDelta || 0),
+    }),
+    { estimatedSold: 0, estimatedRevenue: 0, soldDelta: 0 },
+  )
+  const sortedProducts = [...products].sort((a, b) => (b.estimatedRevenue || 0) - (a.estimatedRevenue || 0))
 
   return (
-    <>
-      <section className="panel largePanel revenuePanel" aria-label={`${label} 추정매출`}>
+    <section className="dashboardGrid combinedDashboard" aria-label="3사 통합 실시간 현황">
+      <section className="panel largePanel revenuePanel" aria-label="3사 총 주문금액">
         <div className="panelHead">
-          <span>{label} 추정매출</span>
-          <strong>{formatWon(inventory.totals?.estimatedRevenue)}</strong>
+          <span>3사 총 주문금액</span>
+          <strong>{formatWon(totals.estimatedRevenue)}</strong>
         </div>
         <div className="metricRow">
-          <span>누적 추정 판매 {formatNumber(inventory.totals?.estimatedSold)}</span>
-          <span>직전 수집 감소 {formatNumber(inventory.totals?.soldDelta)}</span>
-          <span>수집 {collectedAt}</span>
+          <span>총 주문수량 {formatNumber(totals.estimatedSold)}</span>
+          <span>직전 수집 주문 {formatNumber(totals.soldDelta)}</span>
+          <span>수집 {formatTime(latestCollectedAt)}</span>
         </div>
-        <RevenueChart label={label} products={products} collectedAt={inventory.collectedAt} />
+        <CombinedRevenueChart products={products} collectedAt={latestCollectedAt} />
       </section>
 
-      <section className="panel productMetrics" aria-label={`${label} 상품별 추정 현황`}>
-        {products.map((product, index) => (
-          <article className="metricItem" key={product.productId}>
-            <span className="metricColor" style={{ background: getProductColor(index) }} />
+      <section className="panel productMetrics combinedProducts" aria-label="3사 상품별 주문 현황">
+        {sortedProducts.map((product) => (
+          <article className="metricItem" key={product.rowId}>
+            <span className="metricColor" style={{ background: product.channelColor }} />
             {product.imageUrl ? <img src={product.imageUrl} alt="" /> : <span className="metricThumb" />}
             <div>
-              <strong>{product.productName}</strong>
+              <strong>{getDisplayName(product)}</strong>
               <span>
-                {product.timeRange} / 잔여 {formatNumber(product.currentStock)} / 추정 {formatNumber(product.estimatedSold)}
+                {product.channel} / 주문 {formatNumber(product.estimatedSold)}건 / {product.timeRange}
               </span>
             </div>
             <em>{formatWon(product.estimatedRevenue)}</em>
           </article>
         ))}
-        {!products.length ? <div className="emptyPanel">{inventory.error || `${label} 현재 방송 상품 수집 대기 중`}</div> : null}
+        {!sortedProducts.length ? <div className="emptyPanel">3사 현재 방송 상품 수집 대기 중</div> : null}
       </section>
-
-      <section className="panel compactPanel" aria-label={`${label} 수집 상태`}>
-        <div className="panelHead">
-          <span>60분 버퍼</span>
-          <strong>{products.reduce((max, product) => Math.max(max, product.history?.length || 0), 0)}/60</strong>
-        </div>
-        <div className="metricStack">
-          <span>현재 잔여 {formatNumber(inventory.totals?.currentStock)}</span>
-          <span>대상 상품 {products.length}</span>
-          <span>방송 구간 밖 라인 끊김</span>
-        </div>
-      </section>
-    </>
+    </section>
   )
-}
-
-export function SkRevenueDashboard({ inventory }) {
-  return <RevenueDashboard inventory={inventory} label="SK" />
 }
