@@ -29,6 +29,11 @@ async function writeJson(ref, value) {
   await ref.set(JSON.parse(JSON.stringify(value)))
 }
 
+async function readJson(ref) {
+  const snapshot = await ref.get()
+  return snapshot.exists() ? snapshot.val() : null
+}
+
 function withTimeout(task, timeoutMs, label) {
   return Promise.race([
     task,
@@ -47,10 +52,23 @@ async function collectOnce(db) {
 
   for (const channel of scheduleChannels) {
     activeStep = `${channel} schedule`
+    const scheduleRef = rootRef.child(`channels/${channel}/schedule`)
     log(`collecting ${activeStep}`)
     try {
       schedules[channel] = await withTimeout(collectScheduleWithFallback(channel), scheduleTimeoutMs, activeStep)
-      await writeJson(rootRef.child(`channels/${channel}/schedule`), schedules[channel])
+      if (schedules[channel].cacheType === 'none' && schedules[channel].error) {
+        const fallback = await readJson(scheduleRef)
+        if (Array.isArray(fallback?.items) && fallback.items.length) {
+          schedules[channel] = {
+            ...fallback,
+            fromCache: true,
+            cacheType: 'rtdb',
+            error: schedules[channel].error,
+          }
+          log(`using ${channel} schedule from RTDB fallback`)
+        }
+      }
+      await writeJson(scheduleRef, schedules[channel])
       log(`wrote ${channel} schedule ${schedules[channel].items.length} items`)
     } catch (error) {
       log(`${channel} schedule failed: ${error.message}`)
@@ -62,7 +80,8 @@ async function collectOnce(db) {
   log('collecting SK inventory')
   let inventory = null
   try {
-    inventory = await withTimeout(collectSkstoaInventory(await getScheduleItems('skstoa')), inventoryTimeoutMs, 'SK inventory')
+    const skScheduleItems = schedules.skstoa?.items?.length ? schedules.skstoa.items : await getScheduleItems('skstoa')
+    inventory = await withTimeout(collectSkstoaInventory(skScheduleItems), inventoryTimeoutMs, 'SK inventory')
     await writeJson(rootRef.child('channels/skstoa/inventory'), inventory)
   } catch (error) {
     log(`SK inventory failed: ${error.message}`)
