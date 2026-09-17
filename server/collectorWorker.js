@@ -6,6 +6,8 @@ import { getRtdb } from './firebaseRtdb.js'
 const intervalMs = collectorConfig.intervalMs
 const basePath = collectorConfig.rtdbBasePath
 const scheduleChannels = Object.keys(channels)
+const scheduleTimeoutMs = 25_000
+const inventoryTimeoutMs = 45_000
 let running = false
 let stopped = false
 
@@ -25,16 +27,28 @@ async function writeJson(ref, value) {
   await ref.set(JSON.parse(JSON.stringify(value)))
 }
 
+function withTimeout(task, timeoutMs, label) {
+  return Promise.race([
+    task,
+    new Promise((_, reject) => {
+      setTimeout(() => reject(new Error(`${label} timeout after ${timeoutMs}ms`)), timeoutMs)
+    }),
+  ])
+}
+
 async function collectOnce(db) {
   const rootRef = db.ref(basePath)
   const schedules = {}
 
   for (const channel of scheduleChannels) {
-    schedules[channel] = await collectScheduleWithFallback(channel)
+    log(`collecting ${channel} schedule`)
+    schedules[channel] = await withTimeout(collectScheduleWithFallback(channel), scheduleTimeoutMs, `${channel} schedule`)
     await writeJson(rootRef.child(`channels/${channel}/schedule`), schedules[channel])
+    log(`wrote ${channel} schedule ${schedules[channel].items.length} items`)
   }
 
-  const inventory = await collectSkstoaInventory(await getScheduleItems('skstoa'))
+  log('collecting SK inventory')
+  const inventory = await withTimeout(collectSkstoaInventory(await getScheduleItems('skstoa')), inventoryTimeoutMs, 'SK inventory')
   await writeJson(rootRef.child('channels/skstoa/inventory'), inventory)
   await rootRef.child('collector').update({
     lastSuccessAt: Date.now(),
@@ -74,11 +88,10 @@ async function tick(db) {
 async function main() {
   const db = await getRtdb()
   log(`started, interval ${intervalMs}ms, RTDB path "${basePath}"`)
-  await tick(db)
-
   const timer = setInterval(() => {
     tick(db)
   }, intervalMs)
+  tick(db)
 
   const stop = () => {
     if (stopped) return

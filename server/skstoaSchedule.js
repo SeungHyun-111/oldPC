@@ -90,12 +90,16 @@ export function parseSchedule(html) {
 }
 
 export async function fetchSkstoaSchedule() {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 15000)
+
   const response = await fetch(SCHEDULE_URL, {
+    signal: controller.signal,
     headers: {
       'user-agent': 'Mozilla/5.0 OldPCDashboard/0.1',
       accept: 'text/html,application/xhtml+xml',
     },
-  })
+  }).finally(() => clearTimeout(timeout))
 
   if (!response.ok) {
     throw new Error(`SK스토아 편성표 요청 실패: ${response.status}`)
