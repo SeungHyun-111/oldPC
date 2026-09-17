@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises'
-import admin from 'firebase-admin'
+import { cert, getApps, initializeApp } from 'firebase-admin/app'
+import { getDatabase } from 'firebase-admin/database'
 import { collectorConfig } from './collectorConfig.js'
 
 async function getServiceAccount() {
@@ -7,13 +8,13 @@ async function getServiceAccount() {
 }
 
 export async function getRtdb() {
-  if (!admin.apps.length) {
+  if (!getApps().length) {
     const serviceAccount = await getServiceAccount()
-    admin.initializeApp({
-      credential: admin.credential.cert(serviceAccount),
+    initializeApp({
+      credential: cert(serviceAccount),
       databaseURL: collectorConfig.databaseURL,
     })
   }
 
-  return admin.database()
+  return getDatabase()
 }
