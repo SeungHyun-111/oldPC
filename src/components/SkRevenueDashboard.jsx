@@ -10,7 +10,7 @@ function formatNumber(value) {
 
 function formatTime(value) {
   if (!value) return '-'
-  return new Date(value).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
+  return new Date(value).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })
 }
 
 function getProductColor(index) {
@@ -26,13 +26,13 @@ function getDisplayName(product) {
   return (product.productName || product.productId || '').replace(/^\[[^\]]+\]/, '').trim()
 }
 
-function getPointPosition(point, chartStart, chartEnd, width, height, maxValue) {
-  const x = ((point.collectedAt - chartStart) / (chartEnd - chartStart)) * width
-  const y = height - ((point.estimatedRevenue || 0) / Math.max(maxValue, 1)) * height
+function getPointPosition(point, chartStart, chartEnd, plot, maxValue) {
+  const x = plot.left + ((point.collectedAt - chartStart) / (chartEnd - chartStart)) * plot.width
+  const y = plot.top + plot.height - ((point.estimatedRevenue || 0) / Math.max(maxValue, 1)) * plot.height
   return { x, y }
 }
 
-function getLineSegments(product, chartStart, chartEnd, width, height, maxValue) {
+function getLineSegments(product, chartStart, chartEnd, plot, maxValue) {
   const segments = []
   let current = []
 
@@ -46,7 +46,7 @@ function getLineSegments(product, chartStart, chartEnd, width, height, maxValue)
       continue
     }
 
-    current.push(getPointPosition(point, chartStart, chartEnd, width, height, maxValue))
+    current.push(getPointPosition(point, chartStart, chartEnd, plot, maxValue))
   }
 
   if (current.length) segments.push(current)
@@ -66,8 +66,15 @@ function getLastSegmentPoint(segments) {
 
 function RevenueChart({ products, collectedAt }) {
   const width = 970
-  const plotWidth = width
-  const height = 260
+  const height = 300
+  const plot = {
+    left: 36,
+    top: 22,
+    width: 690,
+    height: 232,
+  }
+  const labelWidth = 224
+  const labelHeight = 22
   const latestPointAt = Math.max(0, ...products.flatMap((product) => (product.history || []).map((point) => point.collectedAt || 0)))
   const now = collectedAt || latestPointAt
   const chartEnd = now
@@ -77,28 +84,28 @@ function RevenueChart({ products, collectedAt }) {
       (point) => chartStart <= point.collectedAt && point.collectedAt <= chartEnd && isInsideBroadcast(product, point.collectedAt),
     ),
   )
-  const maxValue = Math.max(1, ...visiblePoints.map((point) => point.estimatedRevenue || 0))
+  const maxValue = Math.max(1, ...visiblePoints.map((point) => point.estimatedRevenue || 0)) * 1.18
   const timeTicks = Array.from({ length: 7 }, (_, index) => chartStart + index * 10 * 60 * 1000)
 
   return (
     <div className="chartWrap">
       <svg
         className="revenueChart"
-        viewBox={`0 0 ${width} ${height + 30}`}
+        viewBox={`0 0 ${width} ${height}`}
         preserveAspectRatio="none"
         role="img"
         aria-label="SK 추정매출 60분 그래프"
       >
         {[0, 1, 2, 3, 4].map((line) => {
-          const y = (height / 4) * line
-          return <line className="gridLine" x1="0" x2={plotWidth} y1={y} y2={y} key={line} />
+          const y = plot.top + (plot.height / 4) * line
+          return <line className="gridLine" x1={plot.left} x2={plot.left + plot.width} y1={y} y2={y} key={line} />
         })}
         {timeTicks.map((tick) => {
-          const x = ((tick - chartStart) / (chartEnd - chartStart)) * plotWidth
+          const x = plot.left + ((tick - chartStart) / (chartEnd - chartStart)) * plot.width
           return (
             <g key={tick}>
-              <line className="gridLine vertical" x1={x} x2={x} y1="0" y2={height} />
-              <text className="tickText" x={x} y={height + 22} textAnchor="middle">
+              <line className="gridLine vertical" x1={x} x2={x} y1={plot.top} y2={plot.top + plot.height} />
+              <text className="tickText" x={x} y={plot.top + plot.height + 23} textAnchor="middle">
                 {formatTime(tick)}
               </text>
             </g>
@@ -106,10 +113,10 @@ function RevenueChart({ products, collectedAt }) {
         })}
         {products.map((product, index) => {
           const color = getProductColor(index)
-          const segments = getLineSegments(product, chartStart, chartEnd, plotWidth, height, maxValue)
+          const segments = getLineSegments(product, chartStart, chartEnd, plot, maxValue)
           const labelPoint = getLastSegmentPoint(segments)
-          const labelX = labelPoint ? Math.min(width - 98, Math.max(labelPoint.x + 10, plotWidth + 6)) : 0
-          const labelY = labelPoint ? Math.max(18, Math.min(height - 12, labelPoint.y - 10)) : 0
+          const labelX = labelPoint ? Math.min(width - labelWidth - 8, Math.max(labelPoint.x + 12, plot.left + plot.width + 12)) : 0
+          const labelY = labelPoint ? Math.max(plot.top + 10, Math.min(plot.top + plot.height - 8, labelPoint.y - 10)) : 0
 
           return (
             <g key={product.productId}>
@@ -122,10 +129,10 @@ function RevenueChart({ products, collectedAt }) {
               {labelPoint ? (
                 <g>
                   <line className="labelGuide" x1={labelPoint.x} x2={labelX} y1={labelPoint.y} y2={labelY} />
-                  <rect className="lineLabelBox" x={labelX} y={labelY - 14} width="94" height="22" rx="5" />
+                  <rect className="lineLabelBox" x={labelX} y={labelY - 14} width={labelWidth} height={labelHeight} rx="5" />
                   <circle cx={labelX + 9} cy={labelY - 3} r="3" fill={color} />
                   <text className="lineLabelText" x={labelX + 17} y={labelY + 1}>
-                    {getDisplayName(product).slice(0, 7)}
+                    {getDisplayName(product).slice(0, 21)}
                   </text>
                 </g>
               ) : null}
@@ -139,7 +146,7 @@ function RevenueChart({ products, collectedAt }) {
 
 export function SkRevenueDashboard({ inventory }) {
   const products = inventory.products || []
-  const collectedAt = inventory.collectedAt ? new Date(inventory.collectedAt).toLocaleTimeString('ko-KR') : '-'
+  const collectedAt = formatTime(inventory.collectedAt)
 
   return (
     <>
