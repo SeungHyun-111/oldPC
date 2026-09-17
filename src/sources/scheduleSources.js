@@ -6,5 +6,10 @@ export const scheduleSources = [
     endpoint: '/api/shinsegae/schedule',
     displayFilter: (item) => item.isMainProduct,
   },
-  { key: 'ktalpha', label: 'KT알파쇼핑', endpoint: '/api/ktalpha/schedule' },
+  {
+    key: 'ktalpha',
+    label: 'KT알파쇼핑',
+    endpoint: '/api/ktalpha/schedule',
+    displayFilter: (item) => item.isMainProduct,
+  },
 ]

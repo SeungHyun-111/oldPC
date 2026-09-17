@@ -56,6 +56,7 @@ export function normalizeKtSchedule(payload) {
         price: formatPrice(getProductPrice(product)),
         imageUrl: normalizeImageUrl(product.rectPrdImgFlNm || product.prdImgFlNm || product.all3ImgFlNm),
         url: product.dpPrdId ? `${BASE_URL}/display/product/${product.dpPrdId}` : BASE_URL,
+        isMainProduct: product.dlgPrdYn === 'Y',
       }))
       .filter((item) => item.id && item.title && item.timeRange)
   })
