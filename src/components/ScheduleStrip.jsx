@@ -1,14 +1,18 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { formatLoadedAt, getItemStatus, getMinuteValue, groupByTime } from '../utils/scheduleTime'
 
-export function ScheduleStrip({ label, schedule }) {
+export function ScheduleStrip({ label, schedule, displayFilter }) {
   const railRef = useRef(null)
   const now = useMemo(() => {
     const current = new Date()
     return `${String(current.getHours()).padStart(2, '0')}:${String(current.getMinutes()).padStart(2, '0')}`
   }, [])
   const currentMinutes = getMinuteValue(now)
-  const groups = useMemo(() => groupByTime(schedule.items), [schedule.items])
+  const displayItems = useMemo(
+    () => (displayFilter ? schedule.items.filter(displayFilter) : schedule.items),
+    [displayFilter, schedule.items],
+  )
+  const groups = useMemo(() => groupByTime(displayItems), [displayItems])
 
   useEffect(() => {
     const rail = railRef.current

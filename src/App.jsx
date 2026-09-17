@@ -23,7 +23,12 @@ function App() {
         </div>
       ) : null}
       {scheduleSources.map((source) => (
-        <ScheduleStrip key={source.key} label={source.label} schedule={schedules[source.key]} />
+        <ScheduleStrip
+          key={source.key}
+          label={source.label}
+          schedule={schedules[source.key]}
+          displayFilter={source.displayFilter}
+        />
       ))}
       <section className="dashboardGrid" aria-label="실시간 현황">
         <SkRevenueDashboard inventory={skInventory} />

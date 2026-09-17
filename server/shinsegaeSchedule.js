@@ -47,6 +47,10 @@ function parseDetailUrl(block, goodsCode) {
   return goodsCode ? `${BASE_URL}/display/detail/${goodsCode}` : ''
 }
 
+function hasVodPlayer(card) {
+  return /startMainVod\s*\(/i.test(card) && /\bdata-src="https:\/\/v\.kr\.kollus\.com\//i.test(card)
+}
+
 export function parseShinsegaeSchedule(html) {
   const blockMatches = [...html.matchAll(/<dl\b[^>]*>/gi)]
 
@@ -67,6 +71,8 @@ export function parseShinsegaeSchedule(html) {
         const title = getAttribute(card, 'data-gtm-item-name')
         const brand = getAttribute(card, 'data-gtm-item-brand')
         const imageUrl = normalizeAssetUrl(getFirstMatch(card, /<img[^>]*src="([^"]+)"/i))
+        const isMainProduct = getAttribute(card, 'data-main') === 'Y'
+        const hasVod = isMainProduct && hasVodPlayer(card)
 
         return {
           id,
@@ -78,6 +84,8 @@ export function parseShinsegaeSchedule(html) {
           price: parsePrice(card),
           imageUrl,
           url: parseDetailUrl(card, id),
+          isMainProduct,
+          hasVod,
         }
       })
       .filter((item) => item.id && item.title && item.timeRange)
