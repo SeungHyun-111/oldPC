@@ -6,8 +6,6 @@ import { getRtdb } from './firebaseRtdb.js'
 const intervalMs = collectorConfig.intervalMs
 const basePath = collectorConfig.rtdbBasePath
 const scheduleChannels = Object.keys(channels)
-const scheduleTimeoutMs = 25_000
-const inventoryTimeoutMs = 45_000
 let running = false
 let runningStartedAt = 0
 let activeStep = ''
@@ -34,18 +32,6 @@ async function readJson(ref) {
   return snapshot.exists() ? snapshot.val() : null
 }
 
-function withTimeout(task, timeoutMs, label) {
-  return Promise.race([
-    task,
-    new Promise((_, reject) => {
-      setTimeout(() => {
-        log(`${label} timeout fired after ${timeoutMs}ms`)
-        reject(new Error(`${label} timeout after ${timeoutMs}ms`))
-      }, timeoutMs)
-    }),
-  ])
-}
-
 async function collectOnce(db) {
   const rootRef = db.ref(basePath)
   const schedules = {}
@@ -55,7 +41,7 @@ async function collectOnce(db) {
     const scheduleRef = rootRef.child(`channels/${channel}/schedule`)
     log(`collecting ${activeStep}`)
     try {
-      schedules[channel] = await withTimeout(collectScheduleWithFallback(channel), scheduleTimeoutMs, activeStep)
+      schedules[channel] = await collectScheduleWithFallback(channel)
       if (schedules[channel].cacheType === 'none' && schedules[channel].error) {
         const fallback = await readJson(scheduleRef)
         if (Array.isArray(fallback?.items) && fallback.items.length) {
@@ -81,7 +67,7 @@ async function collectOnce(db) {
   let inventory = null
   try {
     const skScheduleItems = schedules.skstoa?.items?.length ? schedules.skstoa.items : await getScheduleItems('skstoa')
-    inventory = await withTimeout(collectSkstoaInventory(skScheduleItems), inventoryTimeoutMs, 'SK inventory')
+    inventory = await collectSkstoaInventory(skScheduleItems)
     await writeJson(rootRef.child('channels/skstoa/inventory'), inventory)
   } catch (error) {
     log(`SK inventory failed: ${error.message}`)
@@ -110,11 +96,6 @@ async function tick(db) {
   if (running) {
     const elapsedMs = Date.now() - runningStartedAt
     log(`previous collection still running at "${activeStep}" for ${Math.round(elapsedMs / 1000)}s; skipped this tick`)
-
-    if (elapsedMs > intervalMs * 2) {
-      log(`collection watchdog released stuck run at "${activeStep}"`)
-      running = false
-    }
     return
   }
 
