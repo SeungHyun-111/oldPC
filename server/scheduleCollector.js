@@ -95,6 +95,13 @@ function shouldRefreshSchedule(channel, currentSlot, dateKey, force) {
   return !hasRefreshedToday(channel, dateKey)
 }
 
+function isScheduleCacheCompatible(channel, payload) {
+  if (!payload || !Array.isArray(payload.items)) return false
+  if (channel !== 'shinsegae') return true
+  if (!payload.items.length) return true
+  return payload.items.some((item) => Object.hasOwn(item, 'hasVod'))
+}
+
 export async function collectSchedule(channel, options = {}) {
   const config = channels[channel]
   if (!config) throw new Error(`Unknown schedule channel: ${channel}`)
@@ -105,15 +112,16 @@ export async function collectSchedule(channel, options = {}) {
   const todayKey = getDateKey(nowDate)
   const timing = getScheduleTiming(nowDate)
   const cached = channelState.memorySchedule || (await readScheduleCache(channel))
+  const cacheCompatible = isScheduleCacheCompatible(channel, cached)
 
-  if (cached && Array.isArray(cached.items) && !channelState.memorySchedule) {
+  if (cacheCompatible && !channelState.memorySchedule) {
     channelState.memorySchedule = cached
   }
 
   if (
     !shouldRefreshSchedule(channel, timing.currentSlot, todayKey, options.force) &&
     channelState.memorySchedule &&
-    Array.isArray(channelState.memorySchedule.items)
+    isScheduleCacheCompatible(channel, channelState.memorySchedule)
   ) {
     return {
       ...channelState.memorySchedule,
