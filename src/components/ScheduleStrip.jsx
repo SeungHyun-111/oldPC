@@ -1,9 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { formatLoadedAt, getItemStatus, getMinuteValue, groupByTime } from '../utils/scheduleTime'
 
+const seoulClockFormatter = new Intl.DateTimeFormat('ko-KR', {
+  timeZone: 'Asia/Seoul',
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: false,
+})
+
 function getCurrentClock() {
-  const current = new Date()
-  return `${String(current.getHours()).padStart(2, '0')}:${String(current.getMinutes()).padStart(2, '0')}`
+  const parts = Object.fromEntries(seoulClockFormatter.formatToParts(new Date()).map((part) => [part.type, part.value]))
+  const hour = String(Number(parts.hour) % 24).padStart(2, '0')
+  return `${hour}:${parts.minute}`
 }
 
 export function ScheduleStrip({ label, schedule, displayFilter }) {
@@ -15,6 +23,16 @@ export function ScheduleStrip({ label, schedule, displayFilter }) {
     [displayFilter, schedule.items],
   )
   const groups = useMemo(() => groupByTime(displayItems), [displayItems])
+  const groupStatuses = useMemo(() => groups.map((group) => getItemStatus(group, currentMinutes)), [currentMinutes, groups])
+  const targetIndex = useMemo(() => {
+    const liveIndex = groupStatuses.findIndex((status) => status === 'live')
+    if (liveIndex >= 0) return liveIndex
+
+    const nextIndex = groupStatuses.findIndex((status) => status === 'next')
+    if (nextIndex >= 0) return nextIndex
+
+    return groups.length ? groups.length - 1 : -1
+  }, [groupStatuses, groups.length])
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -26,14 +44,7 @@ export function ScheduleStrip({ label, schedule, displayFilter }) {
 
   useEffect(() => {
     const rail = railRef.current
-    if (!rail) return
-
-    const blocks = [...rail.querySelectorAll('.timeBlock')]
-    const targetBlock =
-      blocks.find((block) => block.classList.contains('isLive')) ||
-      blocks.find((block) => !block.classList.contains('isPast')) ||
-      blocks.at(-1)
-
+    const targetBlock = targetIndex >= 0 ? rail?.querySelector(`[data-schedule-index="${targetIndex}"]`) : null
     if (!targetBlock) return
 
     const target = targetBlock.offsetLeft - rail.clientWidth / 2 + targetBlock.clientWidth / 2
@@ -41,7 +52,7 @@ export function ScheduleStrip({ label, schedule, displayFilter }) {
       left: Math.max(0, target),
       behavior: 'smooth',
     })
-  }, [groups, currentMinutes])
+  }, [targetIndex])
 
   return (
     <section className="scheduleStrip" aria-label={`${label} 편성표`}>
@@ -55,13 +66,15 @@ export function ScheduleStrip({ label, schedule, displayFilter }) {
       </div>
 
       <div className="scheduleRail" ref={railRef}>
-        {groups.map((group) => {
-          const status = getItemStatus(group, currentMinutes)
+        {groups.map((group, index) => {
+          const status = groupStatuses[index]
 
           return (
             <section
               className={`timeBlock ${status === 'live' ? 'isLive' : ''} ${status === 'past' ? 'isPast' : ''}`}
               key={group.timeRange}
+              data-schedule-index={index}
+              data-schedule-status={status}
             >
               <header className="timeHead">
                 <span>{group.timeRange}</span>
