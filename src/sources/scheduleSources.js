@@ -4,7 +4,7 @@ export const scheduleSources = [
     key: 'shinsegae',
     label: '신세계쇼핑',
     endpoint: '/api/shinsegae/schedule',
-    displayFilter: (item) => !Object.hasOwn(item, 'hasVod') || item.hasVod,
+    displayFilter: (item) => item.isMainProduct,
   },
   { key: 'ktalpha', label: 'KT알파쇼핑', endpoint: '/api/ktalpha/schedule' },
 ]

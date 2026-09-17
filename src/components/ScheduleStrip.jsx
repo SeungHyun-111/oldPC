@@ -55,6 +55,7 @@ export function ScheduleStrip({ label, schedule, displayFilter }) {
         currentMinutes,
         rawItemCount: schedule.items.length,
         displayItemCount: displayItems.length,
+        mainCount: schedule.items.filter((item) => item.isMainProduct).length,
         hasVodCount: schedule.items.filter((item) => item.hasVod).length,
         fromCache: schedule.fromCache,
         cacheType: schedule.cacheType,

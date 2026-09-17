@@ -99,7 +99,7 @@ function isScheduleCacheCompatible(channel, payload) {
   if (!payload || !Array.isArray(payload.items)) return false
   if (channel !== 'shinsegae') return true
   if (!payload.items.length) return true
-  return payload.items.some((item) => Object.hasOwn(item, 'hasVod'))
+  return payload.items.some((item) => Object.hasOwn(item, 'isMainProduct'))
 }
 
 export async function collectSchedule(channel, options = {}) {
