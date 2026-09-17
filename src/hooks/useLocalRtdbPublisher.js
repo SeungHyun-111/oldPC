@@ -109,6 +109,18 @@ function mergeInventoryPayload(nextInventory, previousInventory) {
   }
 }
 
+function sanitizeFirebaseValue(value) {
+  if (value === undefined) return null
+  if (Array.isArray(value)) return value.map(sanitizeFirebaseValue)
+  if (!value || typeof value !== 'object') return value
+
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([, entryValue]) => entryValue !== undefined)
+      .map(([key, entryValue]) => [key, sanitizeFirebaseValue(entryValue)]),
+  )
+}
+
 async function publishOnce() {
   const startedAt = Date.now()
 
@@ -121,7 +133,7 @@ async function publishOnce() {
     const inventory = await fetchJson(source.endpoint)
     const inventoryRef = ref(rtdb, `${rtdbBasePath}/channels/${source.key}/inventory`)
     const previousInventory = (await get(inventoryRef)).val()
-    await set(inventoryRef, mergeInventoryPayload(inventory, previousInventory))
+    await set(inventoryRef, sanitizeFirebaseValue(mergeInventoryPayload(inventory, previousInventory)))
   }
 
   await update(ref(rtdb, `${rtdbBasePath}/collector`), {
