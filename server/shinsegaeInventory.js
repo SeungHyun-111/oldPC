@@ -24,7 +24,30 @@ function findFirstKeyValue(value, keyName) {
   return undefined
 }
 
-function findOptionStocks(value, options = []) {
+function findOptionStocks(value, productId, options = []) {
+  if (!value || typeof value !== 'object') return options
+
+  if (Object.prototype.hasOwnProperty.call(value, 'briefOrderAbleCnt')) {
+    const optionId = String(value.goodsdtCode || value.itemCode || value.optionCode || value.goodsCode || options.length + 1)
+    const isProductSummary = optionId === productId
+
+    if (!isProductSummary) {
+      options.push({
+        optionId,
+        optionName: String(value.goodsdtInfo || value.optionName || value.itemName || value.goodsName || '기본'),
+        stock: parseNumber(value.briefOrderAbleCnt),
+      })
+    }
+  }
+
+  for (const child of Array.isArray(value) ? value : Object.values(value)) {
+    findOptionStocks(child, productId, options)
+  }
+
+  return options
+}
+
+function findAllStocks(value, options = []) {
   if (!value || typeof value !== 'object') return options
 
   if (Object.prototype.hasOwnProperty.call(value, 'briefOrderAbleCnt')) {
@@ -36,7 +59,7 @@ function findOptionStocks(value, options = []) {
   }
 
   for (const child of Array.isArray(value) ? value : Object.values(value)) {
-    findOptionStocks(child, options)
+    findAllStocks(child, options)
   }
 
   return options
@@ -96,9 +119,11 @@ function requestDetailInfo(productId) {
 }
 
 function parseDetailInfo(payload, fallback) {
-  const options = findOptionStocks(payload)
+  const options = findOptionStocks(payload, fallback.productId)
+  const allStocks = findAllStocks(payload)
+  const summaryStock = allStocks.find((option) => option.optionId === fallback.productId)?.stock
   const stockFromOptions = options.reduce((sum, option) => sum + option.stock, 0)
-  const totalStock = stockFromOptions || parseNumber(findFirstKeyValue(payload, 'briefOrderAbleCnt'))
+  const totalStock = stockFromOptions || summaryStock || parseNumber(findFirstKeyValue(payload, 'briefOrderAbleCnt'))
   const name = findFirstKeyValue(payload, 'goodsName') || findFirstKeyValue(payload, 'itemName') || fallback.productName
   const price = findFirstKeyValue(payload, 'salePrice') || findFirstKeyValue(payload, 'dcPrice') || findFirstKeyValue(payload, 'goodsPrice')
 
