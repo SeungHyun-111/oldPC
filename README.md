@@ -1,16 +1,40 @@
-# React + Vite
+# oldPC
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+홈쇼핑 편성/재고 데이터를 수집해서 Firebase Realtime Database에 저장하고, React 화면은 RTDB를 구독해서 보여주는 대시보드입니다.
 
-Currently, two official plugins are available:
+## 로컬 수집 워커
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+수집 PC에는 Node.js와 이 프로젝트 폴더가 필요합니다.
 
-## React Compiler
+1. Firebase 콘솔에서 서비스 계정 키 JSON을 내려받아 프로젝트 루트에 `firebase-service-account.json`으로 둡니다.
+2. `.env.example`을 `.env`로 복사합니다.
+3. 아래 명령을 실행합니다.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+```bash
+npm install
+npm run collector
+```
 
-## Expanding the Oxlint configuration
+기본값은 60초마다 수집하고 `oldpc` 경로 아래에 저장합니다.
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+```text
+oldpc/channels/skstoa/schedule
+oldpc/channels/skstoa/inventory
+oldpc/channels/shinsegae/schedule
+oldpc/channels/ktalpha/schedule
+oldpc/collector
+```
+
+브라우저 화면은 같은 RTDB 경로를 실시간 구독합니다.
+
+## 개발 서버
+
+```bash
+npm run dev -- --host 0.0.0.0 --port 5173
+```
+
+기존 로컬 API 서버가 필요하면 아래 명령으로 켤 수 있습니다.
+
+```bash
+npm run api
+```

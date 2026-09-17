@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react'
+import { onValue, ref } from 'firebase/database'
+import { rtdb, rtdbBasePath } from '../firebaseClient'
 
 const emptyInventory = {
   broadcaster: 'SK',
@@ -12,24 +14,18 @@ export function useSkInventory() {
   const [inventory, setInventory] = useState(emptyInventory)
 
   useEffect(() => {
-    let active = true
-
-    async function loadInventory() {
-      try {
-        const response = await fetch('/api/skstoa/inventory', { cache: 'no-store' })
-        const payload = await response.json()
-        if (active) setInventory(payload)
-      } catch (error) {
-        if (active) setInventory((current) => ({ ...current, error: error.message }))
-      }
-    }
-
-    loadInventory()
-    const timer = window.setInterval(loadInventory, 60000)
+    const unsubscribe = onValue(
+      ref(rtdb, `${rtdbBasePath}/channels/skstoa/inventory`),
+      (snapshot) => {
+        setInventory({ ...emptyInventory, ...(snapshot.val() || {}) })
+      },
+      (error) => {
+        setInventory((current) => ({ ...current, error: error.message }))
+      },
+    )
 
     return () => {
-      active = false
-      window.clearInterval(timer)
+      unsubscribe()
     }
   }, [])
 

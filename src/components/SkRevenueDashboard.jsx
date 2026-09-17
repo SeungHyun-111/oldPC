@@ -65,9 +65,8 @@ function getLastSegmentPoint(segments) {
 }
 
 function RevenueChart({ products, collectedAt }) {
-  const plotWidth = 860
-  const labelWidth = 110
-  const width = plotWidth + labelWidth
+  const width = 970
+  const plotWidth = width
   const height = 260
   const latestPointAt = Math.max(0, ...products.flatMap((product) => (product.history || []).map((point) => point.collectedAt || 0)))
   const now = collectedAt || latestPointAt
@@ -83,7 +82,13 @@ function RevenueChart({ products, collectedAt }) {
 
   return (
     <div className="chartWrap">
-      <svg className="revenueChart" viewBox={`0 0 ${width} ${height + 30}`} role="img" aria-label="SK 추정매출 60분 그래프">
+      <svg
+        className="revenueChart"
+        viewBox={`0 0 ${width} ${height + 30}`}
+        preserveAspectRatio="none"
+        role="img"
+        aria-label="SK 추정매출 60분 그래프"
+      >
         {[0, 1, 2, 3, 4].map((line) => {
           const y = (height / 4) * line
           return <line className="gridLine" x1="0" x2={plotWidth} y1={y} y2={y} key={line} />

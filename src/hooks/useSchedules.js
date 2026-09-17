@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react'
+import { onValue, ref } from 'firebase/database'
+import { rtdb, rtdbBasePath } from '../firebaseClient'
 import { scheduleSources } from '../sources/scheduleSources'
 
 function createEmptySchedule() {
@@ -19,14 +21,11 @@ export function useSchedules() {
   )
 
   useEffect(() => {
-    let ignore = false
-
-    async function loadSchedule(source) {
-      try {
-        const response = await fetch(source.endpoint, { cache: 'no-store' })
-        const payload = await response.json()
-        if (!response.ok) throw new Error(payload.error || `요청 실패: ${response.status}`)
-        if (!ignore) {
+    const unsubscribes = scheduleSources.map((source) =>
+      onValue(
+        ref(rtdb, `${rtdbBasePath}/channels/${source.key}/schedule`),
+        (snapshot) => {
+          const payload = snapshot.val() || {}
           setSchedules((current) => ({
             ...current,
             [source.key]: {
@@ -39,9 +38,8 @@ export function useSchedules() {
               error: payload.error || '',
             },
           }))
-        }
-      } catch (error) {
-        if (!ignore) {
+        },
+        (error) => {
           setSchedules((current) => ({
             ...current,
             [source.key]: {
@@ -49,18 +47,12 @@ export function useSchedules() {
               error: error.message,
             },
           }))
-        }
-      }
-    }
-
-    scheduleSources.forEach(loadSchedule)
-    const timer = window.setInterval(() => {
-      scheduleSources.forEach(loadSchedule)
-    }, 60_000)
+        },
+      ),
+    )
 
     return () => {
-      ignore = true
-      window.clearInterval(timer)
+      unsubscribes.forEach((unsubscribe) => unsubscribe())
     }
   }, [])
 
