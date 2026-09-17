@@ -9,6 +9,8 @@ const scheduleChannels = Object.keys(channels)
 const scheduleTimeoutMs = 25_000
 const inventoryTimeoutMs = 45_000
 let running = false
+let runningStartedAt = 0
+let activeStep = ''
 let stopped = false
 
 function log(message) {
@@ -31,7 +33,10 @@ function withTimeout(task, timeoutMs, label) {
   return Promise.race([
     task,
     new Promise((_, reject) => {
-      setTimeout(() => reject(new Error(`${label} timeout after ${timeoutMs}ms`)), timeoutMs)
+      setTimeout(() => {
+        log(`${label} timeout fired after ${timeoutMs}ms`)
+        reject(new Error(`${label} timeout after ${timeoutMs}ms`))
+      }, timeoutMs)
     }),
   ])
 }
@@ -41,15 +46,29 @@ async function collectOnce(db) {
   const schedules = {}
 
   for (const channel of scheduleChannels) {
-    log(`collecting ${channel} schedule`)
-    schedules[channel] = await withTimeout(collectScheduleWithFallback(channel), scheduleTimeoutMs, `${channel} schedule`)
-    await writeJson(rootRef.child(`channels/${channel}/schedule`), schedules[channel])
-    log(`wrote ${channel} schedule ${schedules[channel].items.length} items`)
+    activeStep = `${channel} schedule`
+    log(`collecting ${activeStep}`)
+    try {
+      schedules[channel] = await withTimeout(collectScheduleWithFallback(channel), scheduleTimeoutMs, activeStep)
+      await writeJson(rootRef.child(`channels/${channel}/schedule`), schedules[channel])
+      log(`wrote ${channel} schedule ${schedules[channel].items.length} items`)
+    } catch (error) {
+      log(`${channel} schedule failed: ${error.message}`)
+      await rootRef.child(`channels/${channel}/scheduleError`).set(getErrorPayload(error))
+    }
   }
 
+  activeStep = 'SK inventory'
   log('collecting SK inventory')
-  const inventory = await withTimeout(collectSkstoaInventory(await getScheduleItems('skstoa')), inventoryTimeoutMs, 'SK inventory')
-  await writeJson(rootRef.child('channels/skstoa/inventory'), inventory)
+  let inventory = null
+  try {
+    inventory = await withTimeout(collectSkstoaInventory(await getScheduleItems('skstoa')), inventoryTimeoutMs, 'SK inventory')
+    await writeJson(rootRef.child('channels/skstoa/inventory'), inventory)
+  } catch (error) {
+    log(`SK inventory failed: ${error.message}`)
+    await rootRef.child('channels/skstoa/inventoryError').set(getErrorPayload(error))
+  }
+
   await rootRef.child('collector').update({
     lastSuccessAt: Date.now(),
     intervalMs,
@@ -57,20 +76,32 @@ async function collectOnce(db) {
     channels: scheduleChannels,
   })
 
-  log(
-    `wrote ${scheduleChannels.length} schedules, SK products ${inventory.products.length}, revenue ${Math.round(
-      inventory.totals.estimatedRevenue || 0,
-    ).toLocaleString('ko-KR')}원`,
-  )
+  if (inventory) {
+    log(
+      `wrote ${scheduleChannels.length} schedules, SK products ${inventory.products.length}, revenue ${Math.round(
+        inventory.totals.estimatedRevenue || 0,
+      ).toLocaleString('ko-KR')}원`,
+    )
+  } else {
+    log(`wrote schedules, SK inventory unavailable this tick`)
+  }
 }
 
 async function tick(db) {
   if (running) {
-    log('previous collection still running; skipped this tick')
+    const elapsedMs = Date.now() - runningStartedAt
+    log(`previous collection still running at "${activeStep}" for ${Math.round(elapsedMs / 1000)}s; skipped this tick`)
+
+    if (elapsedMs > intervalMs * 2) {
+      log(`collection watchdog released stuck run at "${activeStep}"`)
+      running = false
+    }
     return
   }
 
   running = true
+  runningStartedAt = Date.now()
+  activeStep = 'starting'
   try {
     await collectOnce(db)
   } catch (error) {
@@ -82,6 +113,7 @@ async function tick(db) {
     })
   } finally {
     running = false
+    activeStep = ''
   }
 }
 

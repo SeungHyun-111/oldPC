@@ -1,3 +1,5 @@
+import https from 'node:https'
+
 const SCHEDULE_URL = 'https://www.skstoa.com/tv_schedule'
 const DETAIL_URL_PREFIX = 'https://www.skstoa.com/display/goods/'
 
@@ -90,21 +92,38 @@ export function parseSchedule(html) {
 }
 
 export async function fetchSkstoaSchedule() {
-  const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), 15000)
+  return parseSchedule(await fetchText(SCHEDULE_URL))
+}
 
-  const response = await fetch(SCHEDULE_URL, {
-    signal: controller.signal,
-    headers: {
-      'user-agent': 'Mozilla/5.0 OldPCDashboard/0.1',
-      accept: 'text/html,application/xhtml+xml',
-    },
-  }).finally(() => clearTimeout(timeout))
+function fetchText(url) {
+  return new Promise((resolve, reject) => {
+    const request = https.get(
+      url,
+      {
+        headers: {
+          'user-agent': 'Mozilla/5.0 OldPCDashboard/0.1',
+          accept: 'text/html,application/xhtml+xml',
+        },
+      },
+      (response) => {
+        let body = ''
+        response.setEncoding('utf8')
+        response.on('data', (chunk) => {
+          body += chunk
+        })
+        response.on('end', () => {
+          if (!response.statusCode || response.statusCode < 200 || response.statusCode >= 300) {
+            reject(new Error(`SK스토아 편성표 요청 실패: ${response.statusCode || 'failed'}`))
+            return
+          }
+          resolve(body)
+        })
+      },
+    )
 
-  if (!response.ok) {
-    throw new Error(`SK스토아 편성표 요청 실패: ${response.status}`)
-  }
-
-  const html = await response.text()
-  return parseSchedule(html)
+    request.on('error', reject)
+    request.setTimeout(15000, () => {
+      request.destroy(new Error('SK스토아 편성표 요청 시간 초과'))
+    })
+  })
 }
