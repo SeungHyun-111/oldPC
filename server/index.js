@@ -4,27 +4,44 @@ import { collectScheduleWithFallback, getScheduleItems } from './scheduleCollect
 
 const port = Number(process.env.OLDPC_API_PORT || 4174)
 
-function sendJson(response, status, payload) {
+function getCorsOrigin(request) {
+  const origin = request.headers.origin
+  if (!origin) return '*'
+
+  try {
+    const { hostname } = new URL(origin)
+    if (hostname === '127.0.0.1' || hostname === 'localhost') return origin
+  } catch {
+    return 'null'
+  }
+
+  return 'null'
+}
+
+function sendJson(request, response, status, payload) {
   response.writeHead(status, {
     'content-type': 'application/json; charset=utf-8',
     'cache-control': 'no-store',
-    'access-control-allow-origin': 'http://127.0.0.1:5173',
+    'access-control-allow-origin': getCorsOrigin(request),
+    'access-control-allow-methods': 'GET, OPTIONS',
+    'access-control-allow-headers': 'content-type',
+    vary: 'origin',
   })
   response.end(JSON.stringify(payload))
 }
 
-async function handleSchedule(channel, response) {
+async function handleSchedule(channel, request, response) {
   const payload = await collectScheduleWithFallback(channel)
-  sendJson(response, payload.error && payload.cacheType === 'none' ? 502 : 200, payload)
+  sendJson(request, response, payload.error && payload.cacheType === 'none' ? 502 : 200, payload)
 }
 
-async function handleSkstoaInventory(response) {
+async function handleSkstoaInventory(request, response) {
   try {
     const scheduleItems = await getScheduleItems('skstoa')
     const payload = await collectSkstoaInventory(scheduleItems)
-    sendJson(response, 200, payload)
+    sendJson(request, response, 200, payload)
   } catch (error) {
-    sendJson(response, 502, {
+    sendJson(request, response, 502, {
       broadcaster: 'SK',
       collectedAt: Date.now(),
       windowMinutes: 60,
@@ -39,27 +56,38 @@ http
   .createServer((request, response) => {
     const url = new URL(request.url || '/', `http://${request.headers.host}`)
 
+    if (request.method === 'OPTIONS') {
+      response.writeHead(204, {
+        'access-control-allow-origin': getCorsOrigin(request),
+        'access-control-allow-methods': 'GET, OPTIONS',
+        'access-control-allow-headers': 'content-type',
+        vary: 'origin',
+      })
+      response.end()
+      return
+    }
+
     if (request.method === 'GET' && url.pathname === '/api/skstoa/schedule') {
-      handleSchedule('skstoa', response)
+      handleSchedule('skstoa', request, response)
       return
     }
 
     if (request.method === 'GET' && url.pathname === '/api/skstoa/inventory') {
-      handleSkstoaInventory(response)
+      handleSkstoaInventory(request, response)
       return
     }
 
     if (request.method === 'GET' && url.pathname === '/api/shinsegae/schedule') {
-      handleSchedule('shinsegae', response)
+      handleSchedule('shinsegae', request, response)
       return
     }
 
     if (request.method === 'GET' && url.pathname === '/api/ktalpha/schedule') {
-      handleSchedule('ktalpha', response)
+      handleSchedule('ktalpha', request, response)
       return
     }
 
-    sendJson(response, 404, { error: 'not found' })
+    sendJson(request, response, 404, { error: 'not found' })
   })
   .listen(port, '127.0.0.1', () => {
     console.log(`oldPC API server: http://127.0.0.1:${port}`)
