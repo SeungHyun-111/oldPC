@@ -1,3 +1,5 @@
+import { useState } from 'react'
+
 const chartMinutes = 60
 
 function formatWon(value) {
@@ -29,7 +31,7 @@ function getDisplayName(product) {
 function getPointPosition(point, chartStart, chartEnd, plot, maxValue) {
   const x = plot.left + ((point.collectedAt - chartStart) / (chartEnd - chartStart)) * plot.width
   const y = plot.top + plot.height - ((point.estimatedRevenue || 0) / Math.max(maxValue, 1)) * plot.height
-  return { x, y }
+  return { ...point, x, y }
 }
 
 function getLineSegments(product, chartStart, chartEnd, plot, maxValue) {
@@ -65,16 +67,19 @@ function getLastSegmentPoint(segments) {
 }
 
 function RevenueChart({ products, collectedAt }) {
+  const [tooltip, setTooltip] = useState(null)
   const width = 970
   const height = 300
   const plot = {
-    left: 36,
+    left: 30,
     top: 22,
-    width: 690,
+    width: 922,
     height: 232,
   }
   const labelWidth = 224
   const labelHeight = 22
+  const tooltipWidth = 178
+  const tooltipHeight = 54
   const latestPointAt = Math.max(0, ...products.flatMap((product) => (product.history || []).map((point) => point.collectedAt || 0)))
   const now = collectedAt || latestPointAt
   const chartEnd = now
@@ -86,6 +91,13 @@ function RevenueChart({ products, collectedAt }) {
   )
   const maxValue = Math.max(1, ...visiblePoints.map((point) => point.estimatedRevenue || 0)) * 1.18
   const timeTicks = Array.from({ length: 7 }, (_, index) => chartStart + index * 10 * 60 * 1000)
+  const broadcastEndMarkers = products
+    .map((product, index) => ({
+      productId: product.productId,
+      color: getProductColor(index),
+      endAt: product.broadcastEndAt,
+    }))
+    .filter((marker) => chartStart <= marker.endAt && marker.endAt <= chartEnd)
 
   return (
     <div className="chartWrap">
@@ -111,11 +123,27 @@ function RevenueChart({ products, collectedAt }) {
             </g>
           )
         })}
+        {broadcastEndMarkers.map((marker) => {
+          const x = plot.left + ((marker.endAt - chartStart) / (chartEnd - chartStart)) * plot.width
+          return (
+            <line
+              className="broadcastEndLine"
+              x1={x}
+              x2={x}
+              y1={plot.top}
+              y2={plot.top + plot.height}
+              stroke={marker.color}
+              key={`${marker.productId}-${marker.endAt}`}
+            />
+          )
+        })}
         {products.map((product, index) => {
           const color = getProductColor(index)
           const segments = getLineSegments(product, chartStart, chartEnd, plot, maxValue)
           const labelPoint = getLastSegmentPoint(segments)
-          const labelX = labelPoint ? Math.min(width - labelWidth - 8, Math.max(labelPoint.x + 12, plot.left + plot.width + 12)) : 0
+          const labelX = labelPoint
+            ? Math.min(plot.left + plot.width - labelWidth - 6, Math.max(plot.left + 6, labelPoint.x + 12))
+            : 0
           const labelY = labelPoint ? Math.max(plot.top + 10, Math.min(plot.top + plot.height - 8, labelPoint.y - 10)) : 0
 
           return (
@@ -124,7 +152,28 @@ function RevenueChart({ products, collectedAt }) {
                 <path className="revenueLine" d={makePath(segment)} stroke={color} key={segmentIndex} />
               ))}
               {segments.flat().map((point, pointIndex) => (
-                <circle className="revenueDot" cx={point.x} cy={point.y} r="3.2" fill={color} key={pointIndex} />
+                <circle
+                  className="revenueDot"
+                  cx={point.x}
+                  cy={point.y}
+                  r="3.8"
+                  fill={color}
+                  key={pointIndex}
+                  onMouseEnter={() => {
+                    const minuteAmount = (point.soldDelta || 0) * (product.price || 0)
+                    const tooltipX = Math.min(width - tooltipWidth - 8, Math.max(8, point.x + 12))
+                    const tooltipY = Math.min(height - tooltipHeight - 8, Math.max(8, point.y - tooltipHeight - 10))
+                    setTooltip({
+                      x: tooltipX,
+                      y: tooltipY,
+                      time: formatTime(point.collectedAt),
+                      soldDelta: point.soldDelta || 0,
+                      amount: minuteAmount,
+                      productName: getDisplayName(product),
+                    })
+                  }}
+                  onMouseLeave={() => setTooltip(null)}
+                />
               ))}
               {labelPoint ? (
                 <g>
@@ -139,6 +188,16 @@ function RevenueChart({ products, collectedAt }) {
             </g>
           )
         })}
+        {tooltip ? (
+          <g className="chartTooltip">
+            <rect x={tooltip.x} y={tooltip.y} width={tooltipWidth} height={tooltipHeight} rx="6" />
+            <text x={tooltip.x + 10} y={tooltip.y + 17}>{tooltip.productName.slice(0, 18)}</text>
+            <text x={tooltip.x + 10} y={tooltip.y + 34}>
+              {tooltip.time} / 분당 {formatNumber(tooltip.soldDelta)}건
+            </text>
+            <text x={tooltip.x + 10} y={tooltip.y + 49}>{formatWon(tooltip.amount)}</text>
+          </g>
+        ) : null}
       </svg>
     </div>
   )
