@@ -6,6 +6,10 @@ import { scheduleSources } from '../sources/scheduleSources'
 const apiBaseUrl = import.meta.env.VITE_OLDPC_API_BASE_URL || 'http://127.0.0.1:4174'
 const publishIntervalMs = Number(import.meta.env.VITE_OLDPC_PUBLISH_INTERVAL_MS || 60_000)
 const historyWindowMs = 60 * 60 * 1000
+const inventorySources = [
+  { key: 'skstoa', endpoint: '/api/skstoa/inventory' },
+  { key: 'shinsegae', endpoint: '/api/shinsegae/inventory' },
+]
 
 function canPublishFromThisPage() {
   if (import.meta.env.VITE_OLDPC_BROWSER_PUBLISH === '0') return false
@@ -96,10 +100,12 @@ async function publishOnce() {
     await set(ref(rtdb, `${rtdbBasePath}/channels/${source.key}/schedule`), payload)
   }
 
-  const inventory = await fetchJson('/api/skstoa/inventory')
-  const inventoryRef = ref(rtdb, `${rtdbBasePath}/channels/skstoa/inventory`)
-  const previousInventory = (await get(inventoryRef)).val()
-  await set(inventoryRef, mergeInventoryPayload(inventory, previousInventory))
+  for (const source of inventorySources) {
+    const inventory = await fetchJson(source.endpoint)
+    const inventoryRef = ref(rtdb, `${rtdbBasePath}/channels/${source.key}/inventory`)
+    const previousInventory = (await get(inventoryRef)).val()
+    await set(inventoryRef, mergeInventoryPayload(inventory, previousInventory))
+  }
 
   await update(ref(rtdb, `${rtdbBasePath}/collector`), {
     lastSuccessAt: Date.now(),

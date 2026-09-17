@@ -93,7 +93,7 @@ function getLabelPosition(product, labelPoint, chartStart, chartEnd, plot, label
   return { x, y }
 }
 
-function RevenueChart({ products, collectedAt }) {
+function RevenueChart({ label, products, collectedAt }) {
   const [tooltip, setTooltip] = useState(null)
   const width = 970
   const height = 300
@@ -111,11 +111,6 @@ function RevenueChart({ products, collectedAt }) {
   const now = collectedAt || latestPointAt
   const chartEnd = now
   const chartStart = chartEnd - chartMinutes * 60 * 1000
-  const visiblePoints = products.flatMap((product) =>
-    (product.history || []).filter(
-      (point) => chartStart <= point.collectedAt && point.collectedAt <= chartEnd && isInsideBroadcast(product, point.collectedAt),
-    ),
-  )
   const visibleMinuteRevenues = products.flatMap((product) =>
     (product.history || [])
       .filter((point) => chartStart <= point.collectedAt && point.collectedAt <= chartEnd && isInsideBroadcast(product, point.collectedAt))
@@ -138,7 +133,7 @@ function RevenueChart({ products, collectedAt }) {
         viewBox={`0 0 ${width} ${height}`}
         preserveAspectRatio="none"
         role="img"
-        aria-label="SK 추정매출 60분 그래프"
+        aria-label={`${label} 추정매출 60분 그래프`}
       >
         {[0, 1, 2, 3, 4].map((line) => {
           const y = plot.top + (plot.height / 4) * line
@@ -231,15 +226,15 @@ function RevenueChart({ products, collectedAt }) {
   )
 }
 
-export function SkRevenueDashboard({ inventory }) {
+export function RevenueDashboard({ inventory, label = inventory.broadcaster || '채널' }) {
   const products = inventory.products || []
   const collectedAt = formatTime(inventory.collectedAt)
 
   return (
     <>
-      <section className="panel largePanel revenuePanel" aria-label="SK 추정매출">
+      <section className="panel largePanel revenuePanel" aria-label={`${label} 추정매출`}>
         <div className="panelHead">
-          <span>SK 추정매출</span>
+          <span>{label} 추정매출</span>
           <strong>{formatWon(inventory.totals?.estimatedRevenue)}</strong>
         </div>
         <div className="metricRow">
@@ -247,10 +242,10 @@ export function SkRevenueDashboard({ inventory }) {
           <span>직전 수집 감소 {formatNumber(inventory.totals?.soldDelta)}</span>
           <span>수집 {collectedAt}</span>
         </div>
-        <RevenueChart products={products} collectedAt={inventory.collectedAt} />
+        <RevenueChart label={label} products={products} collectedAt={inventory.collectedAt} />
       </section>
 
-      <section className="panel productMetrics" aria-label="SK 상품별 추정 현황">
+      <section className="panel productMetrics" aria-label={`${label} 상품별 추정 현황`}>
         {products.map((product, index) => (
           <article className="metricItem" key={product.productId}>
             <span className="metricColor" style={{ background: getProductColor(index) }} />
@@ -264,10 +259,10 @@ export function SkRevenueDashboard({ inventory }) {
             <em>{formatWon(product.estimatedRevenue)}</em>
           </article>
         ))}
-        {!products.length ? <div className="emptyPanel">{inventory.error || 'SK 현재 방송 상품 수집 대기 중'}</div> : null}
+        {!products.length ? <div className="emptyPanel">{inventory.error || `${label} 현재 방송 상품 수집 대기 중`}</div> : null}
       </section>
 
-      <section className="panel compactPanel" aria-label="SK 수집 상태">
+      <section className="panel compactPanel" aria-label={`${label} 수집 상태`}>
         <div className="panelHead">
           <span>60분 버퍼</span>
           <strong>{products.reduce((max, product) => Math.max(max, product.history?.length || 0), 0)}/60</strong>
@@ -280,4 +275,8 @@ export function SkRevenueDashboard({ inventory }) {
       </section>
     </>
   )
+}
+
+export function SkRevenueDashboard({ inventory }) {
+  return <RevenueDashboard inventory={inventory} label="SK" />
 }

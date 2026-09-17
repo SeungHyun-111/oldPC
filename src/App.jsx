@@ -1,7 +1,7 @@
 import { ScheduleStrip } from './components/ScheduleStrip'
-import { SkRevenueDashboard } from './components/SkRevenueDashboard'
+import { RevenueDashboard, SkRevenueDashboard } from './components/SkRevenueDashboard'
 import { useLocalRtdbPublisher } from './hooks/useLocalRtdbPublisher'
-import { useSkInventory } from './hooks/useSkInventory'
+import { useChannelInventory, useSkInventory } from './hooks/useSkInventory'
 import { useSchedules } from './hooks/useSchedules'
 import { scheduleSources } from './sources/scheduleSources'
 import './App.css'
@@ -10,6 +10,7 @@ function App() {
   const publisher = useLocalRtdbPublisher()
   const schedules = useSchedules()
   const skInventory = useSkInventory()
+  const shinsegaeInventory = useChannelInventory('shinsegae', '신세계')
 
   return (
     <main className="page">
@@ -25,6 +26,9 @@ function App() {
       ))}
       <section className="dashboardGrid" aria-label="실시간 현황">
         <SkRevenueDashboard inventory={skInventory} />
+      </section>
+      <section className="dashboardGrid" aria-label="신세계 실시간 현황">
+        <RevenueDashboard inventory={shinsegaeInventory} label="신세계" />
       </section>
     </main>
   )
