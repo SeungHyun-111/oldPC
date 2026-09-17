@@ -1,10 +1,10 @@
-import 'dotenv/config'
 import { collectSkstoaInventory } from './skstoaInventory.js'
+import { collectorConfig } from './collectorConfig.js'
 import { channels, collectScheduleWithFallback, getScheduleItems } from './scheduleCollector.js'
 import { getRtdb } from './firebaseRtdb.js'
 
-const intervalMs = Number(process.env.OLDPC_COLLECT_INTERVAL_MS || 60_000)
-const basePath = process.env.OLDPC_RTDB_BASE_PATH || 'oldpc'
+const intervalMs = collectorConfig.intervalMs
+const basePath = collectorConfig.rtdbBasePath
 const scheduleChannels = Object.keys(channels)
 let running = false
 let stopped = false

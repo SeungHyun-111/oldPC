@@ -7,15 +7,14 @@
 수집 PC에는 Node.js와 이 프로젝트 폴더가 필요합니다.
 
 1. Firebase 콘솔에서 서비스 계정 키 JSON을 내려받아 프로젝트 루트에 `firebase-service-account.json`으로 둡니다.
-2. `.env.example`을 `.env`로 복사합니다.
-3. 아래 명령을 실행합니다.
+2. 아래 명령을 실행합니다.
 
 ```bash
 npm install
 npm run collector
 ```
 
-기본값은 60초마다 수집하고 `oldpc` 경로 아래에 저장합니다.
+기본값은 60초마다 수집하고 `oldpc` 경로 아래에 저장합니다. 설정은 `server/collectorConfig.js`에 있습니다.
 
 ```text
 oldpc/channels/skstoa/schedule
