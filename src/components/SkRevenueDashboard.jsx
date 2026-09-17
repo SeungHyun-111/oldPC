@@ -28,10 +28,15 @@ function getDisplayName(product) {
   return (product.productName || product.productId || '').replace(/^\[[^\]]+\]/, '').trim()
 }
 
-function getPointPosition(point, chartStart, chartEnd, plot, maxValue) {
+function getMinuteRevenue(point, product) {
+  return (point.soldDelta || 0) * (product.price || 0)
+}
+
+function getPointPosition(point, product, chartStart, chartEnd, plot, maxValue) {
   const x = plot.left + ((point.collectedAt - chartStart) / (chartEnd - chartStart)) * plot.width
-  const y = plot.top + plot.height - ((point.estimatedRevenue || 0) / Math.max(maxValue, 1)) * plot.height
-  return { ...point, x, y }
+  const minuteRevenue = getMinuteRevenue(point, product)
+  const y = plot.top + plot.height - (minuteRevenue / Math.max(maxValue, 1)) * plot.height
+  return { ...point, minuteRevenue, x, y }
 }
 
 function getLineSegments(product, chartStart, chartEnd, plot, maxValue) {
@@ -48,7 +53,7 @@ function getLineSegments(product, chartStart, chartEnd, plot, maxValue) {
       continue
     }
 
-    current.push(getPointPosition(point, chartStart, chartEnd, plot, maxValue))
+    current.push(getPointPosition(point, product, chartStart, chartEnd, plot, maxValue))
   }
 
   if (current.length) segments.push(current)
@@ -111,7 +116,12 @@ function RevenueChart({ products, collectedAt }) {
       (point) => chartStart <= point.collectedAt && point.collectedAt <= chartEnd && isInsideBroadcast(product, point.collectedAt),
     ),
   )
-  const maxValue = Math.max(1, ...visiblePoints.map((point) => point.estimatedRevenue || 0)) * 1.18
+  const visibleMinuteRevenues = products.flatMap((product) =>
+    (product.history || [])
+      .filter((point) => chartStart <= point.collectedAt && point.collectedAt <= chartEnd && isInsideBroadcast(product, point.collectedAt))
+      .map((point) => getMinuteRevenue(point, product)),
+  )
+  const maxValue = Math.max(1, ...visibleMinuteRevenues) * 1.18
   const timeTicks = Array.from({ length: 7 }, (_, index) => chartStart + index * 10 * 60 * 1000)
   const broadcastEndMarkers = products
     .map((product, index) => ({
@@ -179,7 +189,6 @@ function RevenueChart({ products, collectedAt }) {
                   fill={color}
                   key={pointIndex}
                   onMouseEnter={() => {
-                    const minuteAmount = (point.soldDelta || 0) * (product.price || 0)
                     const tooltipX = Math.min(width - tooltipWidth - 8, Math.max(8, point.x + 12))
                     const tooltipY = Math.min(height - tooltipHeight - 8, Math.max(8, point.y - tooltipHeight - 10))
                     setTooltip({
@@ -187,7 +196,7 @@ function RevenueChart({ products, collectedAt }) {
                       y: tooltipY,
                       time: formatTime(point.collectedAt),
                       soldDelta: point.soldDelta || 0,
-                      amount: minuteAmount,
+                      amount: point.minuteRevenue || 0,
                       productName: getDisplayName(product),
                     })
                   }}
