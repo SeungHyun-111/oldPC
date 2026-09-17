@@ -6,6 +6,7 @@ const detailState = new Map()
 const windowMs = maxSnapshots * 60 * 1000
 const endBufferMs = 60 * 1000
 const stockKeys = new Set([
+  'maxOrdPssQty',
   'briefOrderAbleCnt',
   'orderAbleCnt',
   'ordAbleCnt',
@@ -57,13 +58,15 @@ function findStockItems(value, productId, items = []) {
   if (!value || typeof value !== 'object') return items
 
   const stock = getStockValue(value)
+  const children = Array.isArray(value.children) ? value.children : []
   if (stock !== undefined) {
     const optionId = String(
       value.itemCode || value.optionCode || value.optCode || value.prdOptNo || value.dpPrdId || value.prdId || items.length + 1,
     )
     const isProductSummary = optionId === productId
+    const isParentOption = children.length > 0
 
-    if (!isProductSummary) {
+    if (!isProductSummary && !isParentOption) {
       items.push({
         optionId,
         optionName: String(value.itemName || value.optionName || value.optName || value.prdOptNm || value.prdNm || '기본'),
@@ -83,7 +86,8 @@ function findAllStockItems(value, items = []) {
   if (!value || typeof value !== 'object') return items
 
   const stock = getStockValue(value)
-  if (stock !== undefined) {
+  const children = Array.isArray(value.children) ? value.children : []
+  if (stock !== undefined && !children.length) {
     items.push({
       optionId: String(value.itemCode || value.optionCode || value.optCode || value.prdOptNo || value.dpPrdId || value.prdId || items.length + 1),
       optionName: String(value.itemName || value.optionName || value.optName || value.prdOptNm || value.prdNm || '기본'),
