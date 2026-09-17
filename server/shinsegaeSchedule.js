@@ -2,6 +2,13 @@ const BASE_URL = 'https://www.shinsegaetvshopping.com'
 const SCHEDULE_URL = `${BASE_URL}/broadcast/tvschedule-ajax`
 import https from 'node:https'
 
+const kstTimeFormatter = new Intl.DateTimeFormat('ko-KR', {
+  timeZone: 'Asia/Seoul',
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: false,
+})
+
 function decodeEntities(value) {
   return String(value || '')
     .replace(/&quot;/g, '"')
@@ -20,6 +27,24 @@ function getAttribute(html, name) {
 
 function getFirstMatch(html, pattern) {
   return decodeEntities(html.match(pattern)?.[1])
+}
+
+function formatKstTime(timestamp) {
+  const value = Number(timestamp)
+  if (!Number.isFinite(value) || value <= 0) return ''
+
+  const parts = Object.fromEntries(kstTimeFormatter.formatToParts(new Date(value)).map((part) => [part.type, part.value]))
+  const hour = String(Number(parts.hour) % 24).padStart(2, '0')
+  return `${hour}:${parts.minute}`
+}
+
+function parseTimeRange(block) {
+  const textTimeRange = getFirstMatch(block, /<span class="_time">([^<]+)<\/span>/i)
+  if (textTimeRange) return textTimeRange
+
+  const start = formatKstTime(getAttribute(block, 'bdBtime'))
+  const end = formatKstTime(getAttribute(block, 'bdEtime'))
+  return start && end ? `${start}~${end}` : ''
 }
 
 function normalizeAssetUrl(url) {
@@ -58,7 +83,7 @@ export function parseShinsegaeSchedule(html) {
     const blockStart = match.index
     const nextStart = blockMatches[index + 1]?.index ?? html.length
     const block = html.slice(blockStart, nextStart)
-    const timeRange = getFirstMatch(block, /<span class="_time">([^<]+)<\/span>/i)
+    const timeRange = parseTimeRange(block)
     const [startTime = '', endTime = ''] = timeRange.split('~').map((time) => time.trim())
     const cardMatches = [...block.matchAll(/<div class="card gtm_list_item"/g)]
 
