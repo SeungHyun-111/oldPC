@@ -11,6 +11,7 @@ function App() {
   const schedules = useSchedules()
   const skInventory = useSkInventory()
   const shinsegaeInventory = useChannelInventory('shinsegae', '신세계')
+  const ktInventory = useChannelInventory('ktalpha', 'K쇼핑')
 
   return (
     <main className="page">
@@ -29,6 +30,9 @@ function App() {
       </section>
       <section className="dashboardGrid" aria-label="신세계 실시간 현황">
         <RevenueDashboard inventory={shinsegaeInventory} label="신세계" />
+      </section>
+      <section className="dashboardGrid" aria-label="K쇼핑 실시간 현황">
+        <RevenueDashboard inventory={ktInventory} label="K쇼핑" />
       </section>
     </main>
   )

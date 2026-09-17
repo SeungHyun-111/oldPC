@@ -9,6 +9,7 @@ const historyWindowMs = 60 * 60 * 1000
 const inventorySources = [
   { key: 'skstoa', endpoint: '/api/skstoa/inventory' },
   { key: 'shinsegae', endpoint: '/api/shinsegae/inventory' },
+  { key: 'ktalpha', endpoint: '/api/ktalpha/inventory' },
 ]
 
 function canPublishFromThisPage() {

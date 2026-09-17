@@ -1,4 +1,5 @@
 import http from 'node:http'
+import { collectKtInventory } from './ktInventory.js'
 import { collectShinsegaeInventory } from './shinsegaeInventory.js'
 import { collectSkstoaInventory } from './skstoaInventory.js'
 import { collectScheduleWithFallback, getScheduleItems } from './scheduleCollector.js'
@@ -70,6 +71,23 @@ async function handleShinsegaeInventory(request, response) {
   }
 }
 
+async function handleKtInventory(request, response) {
+  try {
+    const scheduleItems = await getScheduleItems('ktalpha')
+    const payload = await collectKtInventory(scheduleItems)
+    sendJson(request, response, 200, payload)
+  } catch (error) {
+    sendJson(request, response, 502, {
+      broadcaster: 'K쇼핑',
+      collectedAt: Date.now(),
+      windowMinutes: 60,
+      products: [],
+      totals: { estimatedSold: 0, estimatedRevenue: 0, soldDelta: 0, currentStock: 0 },
+      error: error.message,
+    })
+  }
+}
+
 http
   .createServer((request, response) => {
     const url = new URL(request.url || '/', `http://${request.headers.host}`)
@@ -107,6 +125,11 @@ http
 
     if (request.method === 'GET' && url.pathname === '/api/ktalpha/schedule') {
       handleSchedule('ktalpha', request, response)
+      return
+    }
+
+    if (request.method === 'GET' && url.pathname === '/api/ktalpha/inventory') {
+      handleKtInventory(request, response)
       return
     }
 
