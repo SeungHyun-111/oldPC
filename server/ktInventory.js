@@ -54,34 +54,6 @@ function getStockValue(value) {
   return undefined
 }
 
-function findStockItems(value, productId, items = []) {
-  if (!value || typeof value !== 'object') return items
-
-  const stock = getStockValue(value)
-  const children = Array.isArray(value.children) ? value.children : []
-  if (stock !== undefined) {
-    const optionId = String(
-      value.itemCode || value.optionCode || value.optCode || value.prdOptNo || value.dpPrdId || value.prdId || items.length + 1,
-    )
-    const isProductSummary = optionId === productId
-    const isParentOption = children.length > 0
-
-    if (!isProductSummary && !isParentOption) {
-      items.push({
-        optionId,
-        optionName: String(value.itemName || value.optionName || value.optName || value.prdOptNm || value.prdNm || '기본'),
-        stock: parseNumber(stock),
-      })
-    }
-  }
-
-  for (const child of Array.isArray(value) ? value : Object.values(value)) {
-    findStockItems(child, productId, items)
-  }
-
-  return items
-}
-
 function findAllStockItems(value, items = []) {
   if (!value || typeof value !== 'object') return items
 
@@ -100,6 +72,28 @@ function findAllStockItems(value, items = []) {
   }
 
   return items
+}
+
+function getUnitOptions(unitList = [], parentName = '') {
+  return unitList.flatMap((unit, index) => {
+    const children = Array.isArray(unit.children) ? unit.children : []
+    const unitName = String(unit.untDtlNm || unit.optionName || unit.itemName || '').trim()
+    const optionName = [parentName, unitName].filter(Boolean).join(' / ') || '기본'
+
+    if (children.length) return getUnitOptions(children, optionName)
+
+    return [
+      {
+        optionId: String(unit.untSeq || unit.untDtlId || index + 1),
+        optionName,
+        stock: parseNumber(unit.maxOrdPssQty),
+      },
+    ]
+  })
+}
+
+function getUnitSummaryStock(unitList = []) {
+  return unitList.reduce((sum, unit) => sum + parseNumber(unit.maxOrdPssQty), 0)
 }
 
 function requestProduct(productId) {
@@ -151,13 +145,19 @@ function requestProduct(productId) {
 
 function parseProduct(payload, fallback) {
   const productId = getKtProductId(fallback.productId)
-  const options = findStockItems(payload, productId)
-  const allStocks = findAllStockItems(payload)
+  const productModel = payload?.data?.productModel || payload?.productModel || payload?.data || payload
+  const unitList = Array.isArray(productModel?.unitList) ? productModel.unitList : []
+  const options = getUnitOptions(unitList).filter((option) => option.stock > 0)
+  const allStocks = findAllStockItems(productModel)
   const summaryStock = allStocks.find((option) => option.optionId === productId)?.stock
   const stockFromOptions = options.reduce((sum, option) => sum + option.stock, 0)
-  const totalStock = stockFromOptions || summaryStock || parseNumber(findFirstKeyValue(payload, stockKeys))
-  const name = findFirstKeyValue(payload, ['prdNm', 'productName', 'goodsName', 'itemName']) || fallback.productName
-  const price = findFirstKeyValue(payload, ['ecMktSlPc', 'ecSlPc', 'mcMktSlPc', 'mcSlPc', 'salePrice', 'goodsPrice'])
+  const totalStock = stockFromOptions || getUnitSummaryStock(unitList) || summaryStock || parseNumber(findFirstKeyValue(productModel, stockKeys))
+  const name = productModel?.prdNm || findFirstKeyValue(productModel, ['productName', 'goodsName', 'itemName']) || fallback.productName
+  const price =
+    productModel?.lowestPrice ||
+    productModel?.promotion?.targetRvo?.slPc ||
+    productModel?.originalPrice ||
+    findFirstKeyValue(productModel, ['ecMktSlPc', 'ecSlPc', 'mcMktSlPc', 'mcSlPc', 'salePrice', 'goodsPrice'])
 
   return {
     broadcaster: 'K쇼핑',
