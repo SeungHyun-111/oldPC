@@ -174,6 +174,12 @@ function getProductSessionKey(product) {
   return `${product.productId || ''}-${product.broadcastStartAt || 0}`
 }
 
+function pruneDetailState(now = Date.now()) {
+  for (const [key, product] of detailState.entries()) {
+    if ((product.broadcastEndAt || 0) < now - windowMs) detailState.delete(key)
+  }
+}
+
 async function mapLimit(items, limit, worker) {
   const results = []
   let nextIndex = 0
@@ -215,6 +221,7 @@ function getWindowProducts(scheduleItems) {
 function updateStats(product, snapshot) {
   const sessionKey = getProductSessionKey(product)
   const previous = detailState.get(sessionKey)
+  const collectedAt = Date.now()
   const stock = snapshot.totalStock
   const price = snapshot.price || product.price || 0
   const delta = previous ? previous.lastStock - stock : 0
@@ -227,7 +234,8 @@ function updateStats(product, snapshot) {
   const history = [
     ...(previous?.history || []),
     {
-      collectedAt: Date.now(),
+      collectedAt,
+      sampleOk: true,
       active: true,
       stock,
       soldDelta,
@@ -249,7 +257,10 @@ function updateStats(product, snapshot) {
     estimatedRevenue,
     restockQuantity,
     history,
-    collectedAt: Date.now(),
+    collectedAt,
+    attemptedAt: collectedAt,
+    lastSuccessAt: collectedAt,
+    sampleOk: true,
   }
 
   detailState.set(sessionKey, next)
@@ -257,6 +268,7 @@ function updateStats(product, snapshot) {
 }
 
 export async function collectShinsegaeInventory(scheduleItems = []) {
+  const attemptedAt = Date.now()
   const windowProducts = getWindowProducts(scheduleItems)
   const activeProducts = windowProducts.filter((product) => isActiveAt(product))
   const results = []
@@ -270,7 +282,7 @@ export async function collectShinsegaeInventory(scheduleItems = []) {
     } catch (error) {
       const previous = detailState.get(getProductSessionKey(product))
       if (previous) {
-        return { ...previous, error: error.message }
+        return { ...previous, attemptedAt, sampleOk: false, error: error.message }
       }
       errors.push(`${product.productId}: ${error.message}`)
       return null
@@ -303,13 +315,22 @@ export async function collectShinsegaeInventory(scheduleItems = []) {
       })
     }
   }
+  pruneDetailState()
+  const activeSuccesses = activeResults.filter((product) => product?.sampleOk !== false)
+  const completedAt = Date.now()
 
   return {
     broadcaster: '신세계',
-    collectedAt: Date.now(),
+    attemptedAt,
+    collectedAt: completedAt,
+    lastSuccessAt: activeSuccesses.length ? Math.max(...activeSuccesses.map((product) => product.lastSuccessAt || product.collectedAt || 0)) : undefined,
     windowMinutes: maxSnapshots,
     products: results,
     error: errors.join(' / ') || undefined,
+    errorCount: results.filter((product) => product.sampleOk === false).length,
+    collectionMs: completedAt - attemptedAt,
+    requestedCount: activeProducts.length,
+    successCount: activeSuccesses.length,
     totals: results.reduce(
       (sum, product) => ({
         estimatedSold: sum.estimatedSold + (product.estimatedSold || 0),

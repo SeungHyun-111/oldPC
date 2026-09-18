@@ -49,14 +49,48 @@ function getProductRuntimeStats(product) {
   )
 }
 
-function CurrentProductTable({ inventory, nowAt, theme }) {
-  const currentAt = nowAt
-  const currentProducts = [...(inventory.products || [])]
-    .filter((product) => product.broadcastStartAt <= currentAt && product.broadcastEndAt >= currentAt)
-    .map((product) => ({
+function getProductGroupKey(product) {
+  return `${product.broadcastStartAt || 0}-${product.broadcastEndAt || 0}`
+}
+
+function getProductGroups(products, nowAt) {
+  const byGroup = new Map()
+
+  for (const product of products || []) {
+    const startAt = product.broadcastStartAt || 0
+    const endAt = product.broadcastEndAt || 0
+    if (!startAt || !endAt) continue
+
+    const groupKey = getProductGroupKey(product)
+    const group = byGroup.get(groupKey) || {
+      startAt,
+      endAt,
+      products: [],
+    }
+    group.products.push({
       ...product,
       runtimeStats: getProductRuntimeStats(product),
-    }))
+    })
+    byGroup.set(groupKey, group)
+  }
+
+  const groups = [...byGroup.values()].sort((a, b) => a.startAt - b.startAt)
+  const currentGroup = groups.find((group) => group.startAt <= nowAt && group.endAt >= nowAt)
+  const previousGroup = [...groups]
+    .reverse()
+    .find((group) => {
+      if (currentGroup) return group.startAt < currentGroup.startAt
+      return group.endAt < nowAt
+    })
+
+  return { currentGroup, previousGroup }
+}
+
+function CurrentProductTable({ inventory, nowAt, theme }) {
+  const [summaryMode, setSummaryMode] = useState('current')
+  const { currentGroup, previousGroup } = useMemo(() => getProductGroups(inventory.products, nowAt), [inventory.products, nowAt])
+  const selectedGroup = summaryMode === 'previous' ? previousGroup : currentGroup
+  const currentProducts = [...(selectedGroup?.products || [])]
     .sort((a, b) => b.runtimeStats.revenue - a.runtimeStats.revenue)
   const products = currentProducts.slice(0, 5)
   const pgmTotal = currentProducts.reduce(
@@ -66,12 +100,32 @@ function CurrentProductTable({ inventory, nowAt, theme }) {
     }),
     { revenue: 0, sold: 0 },
   )
+  const isPreviousMode = summaryMode === 'previous'
+  const title = isPreviousMode ? '직전PGM누계' : '현PGM누계'
 
   return (
-    <aside className="liveProductPanel" aria-label="현재 방송 상품별 주문금액">
+    <aside className="liveProductPanel" aria-label={`${title} 상품별 주문금액`}>
       <header className="livePgmTotal">
         <span className="liveDot" />
-        <span>현PGM누계</span>
+        <span>{title}</span>
+        <span className="pgmSwitch" aria-label="PGM 누계 전환">
+          <button
+            aria-label="직전 PGM 누계 보기"
+            disabled={!previousGroup || isPreviousMode}
+            onClick={() => setSummaryMode('previous')}
+            type="button"
+          >
+            ▲
+          </button>
+          <button
+            aria-label="현재 PGM 누계 보기"
+            disabled={!currentGroup || !isPreviousMode}
+            onClick={() => setSummaryMode('current')}
+            type="button"
+          >
+            ▼
+          </button>
+        </span>
         <strong>{formatKRW(pgmTotal.revenue)}</strong>
         <em>{formatNumber(pgmTotal.sold)}건</em>
       </header>
@@ -90,7 +144,7 @@ function CurrentProductTable({ inventory, nowAt, theme }) {
             <em>{formatNumber(product.runtimeStats.sold)}</em>
           </a>
         ))}
-        {!products.length ? <div className="liveProductEmpty">현재 방송 상품 수집 대기 중</div> : null}
+        {!products.length ? <div className="liveProductEmpty">{isPreviousMode ? '직전 방송 상품 수집 대기 중' : '현재 방송 상품 수집 대기 중'}</div> : null}
       </div>
       <span className="panelGlow" style={{ background: theme.accent }} />
     </aside>

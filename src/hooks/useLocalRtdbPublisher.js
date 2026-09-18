@@ -72,6 +72,18 @@ function mergeInventoryProduct(nextProduct, previousProduct, collectedAt, cycleB
     }
   }
 
+  const price = nextProduct.price || previousProduct.price || 0
+
+  if (nextProduct.sampleOk === false) {
+    return {
+      ...previousProduct,
+      error: nextProduct.error,
+      sampleOk: false,
+      attemptedAt: nextProduct.attemptedAt || collectedAt,
+      history: normalizeHistory(previousProduct.history, collectedAt, cycleBucketAt),
+    }
+  }
+
   if (collectedAt >= (nextProduct.broadcastEndAt || previousProduct.broadcastEndAt || 0) - endBufferMs) {
     return {
       ...previousProduct,
@@ -84,10 +96,11 @@ function mergeInventoryProduct(nextProduct, previousProduct, collectedAt, cycleB
       estimatedRevenue: previousProduct.estimatedRevenue || 0,
       history: normalizeHistory(previousProduct.history, collectedAt, cycleBucketAt),
       collectedAt,
+      sampleOk: true,
+      lastSuccessAt: collectedAt,
     }
   }
 
-  const price = nextProduct.price || previousProduct.price || 0
   const currentStock = nextProduct.currentStock || nextProduct.totalStock || 0
   const previousStock = previousProduct.currentStock ?? previousProduct.lastStock ?? currentStock
   const soldDelta = Math.max(previousStock - currentStock, 0)
@@ -120,25 +133,48 @@ function mergeInventoryProduct(nextProduct, previousProduct, collectedAt, cycleB
     estimatedRevenue,
     history: normalizeHistory(history, collectedAt, cycleBucketAt),
     collectedAt,
+    sampleOk: true,
+    lastSuccessAt: collectedAt,
   }
 }
 
 function mergeInventoryPayload(nextInventory, previousInventory, cycleBucketAt) {
-  const collectedAt = nextInventory.collectedAt || Date.now()
+  const attemptedAt = nextInventory.attemptedAt || nextInventory.collectedAt || Date.now()
+  const collectedAt = nextInventory.collectedAt || attemptedAt
   const previousBySession = new Map((previousInventory?.products || []).map((product) => [getProductSessionKey(product), product]))
   const nextProducts = nextInventory.products || []
+  const nextBySession = new Map(nextProducts.map((product) => [getProductSessionKey(product), product]))
+  const mergedBySession = new Map()
 
-  const products = nextProducts.length
-    ? nextProducts.map((product) => mergeInventoryProduct(product, previousBySession.get(getProductSessionKey(product)), collectedAt, cycleBucketAt))
-    : (previousInventory?.products || [])
-        .map((product) => ({
-          ...product,
-          history: normalizeHistory(product.history, collectedAt, cycleBucketAt),
-        }))
-        .filter((product) => product.history.length || product.broadcastEndAt >= collectedAt)
+  for (const product of nextProducts) {
+    mergedBySession.set(getProductSessionKey(product), mergeInventoryProduct(product, previousBySession.get(getProductSessionKey(product)), collectedAt, cycleBucketAt))
+  }
+
+  for (const previousProduct of previousInventory?.products || []) {
+    const key = getProductSessionKey(previousProduct)
+    if (nextBySession.has(key)) continue
+    const history = normalizeHistory(previousProduct.history, collectedAt, cycleBucketAt)
+    if (history.length || previousProduct.broadcastEndAt >= collectedAt) {
+      mergedBySession.set(key, {
+        ...previousProduct,
+        history,
+      })
+    }
+  }
+
+  const products = [...mergedBySession.values()]
+  const okProducts = products.filter((product) => product.sampleOk !== false)
+  const failedProducts = products.filter((product) => product.sampleOk === false)
+  const lastSuccessAt =
+    okProducts.length && nextProducts.some((product) => product.sampleOk !== false)
+      ? collectedAt
+      : previousInventory?.lastSuccessAt || null
 
   return {
     ...nextInventory,
+    attemptedAt,
+    lastSuccessAt,
+    errorCount: failedProducts.length,
     products,
     totals: products.reduce(
       (sum, product) => ({
@@ -166,32 +202,67 @@ function sanitizeFirebaseValue(value) {
 
 async function publishOnce() {
   const startedAt = Date.now()
+  const channelErrors = []
 
   for (const source of scheduleSources) {
-    const payload = await fetchJson(source.endpoint)
-    await set(ref(rtdb, `${rtdbBasePath}/channels/${source.key}/schedule`), payload)
+    try {
+      const payload = await fetchJson(source.endpoint)
+      await set(ref(rtdb, `${rtdbBasePath}/channels/${source.key}/schedule`), payload)
+    } catch (error) {
+      channelErrors.push(`${source.key} schedule: ${error.message}`)
+      await set(ref(rtdb, `${rtdbBasePath}/channels/${source.key}/scheduleError`), {
+        message: error.message,
+        at: Date.now(),
+      })
+    }
   }
 
   const inventoryStartedAt = Date.now()
   const cycleBucketAt = getMinuteBucketAt(inventoryStartedAt)
 
   for (const source of inventorySources) {
-    const inventory = await fetchJson(source.endpoint)
     const inventoryRef = ref(rtdb, `${rtdbBasePath}/channels/${source.key}/inventory`)
-    const previousInventory = (await get(inventoryRef)).val()
-    await set(inventoryRef, sanitizeFirebaseValue(mergeInventoryPayload(inventory, previousInventory, cycleBucketAt)))
+    try {
+      const inventory = await fetchJson(source.endpoint)
+      const previousInventory = (await get(inventoryRef)).val()
+      await set(inventoryRef, sanitizeFirebaseValue(mergeInventoryPayload(inventory, previousInventory, cycleBucketAt)))
+    } catch (error) {
+      channelErrors.push(`${source.key} inventory: ${error.message}`)
+      const previousInventory = (await get(inventoryRef)).val()
+      if (previousInventory) {
+        await set(
+          inventoryRef,
+          sanitizeFirebaseValue({
+            ...previousInventory,
+            attemptedAt: Date.now(),
+            status: 'error',
+            error: error.message,
+          }),
+        )
+      }
+      await set(ref(rtdb, `${rtdbBasePath}/channels/${source.key}/inventoryError`), {
+        message: error.message,
+        at: Date.now(),
+      })
+    }
   }
 
-  await update(ref(rtdb, `${rtdbBasePath}/collector`), {
-    lastSuccessAt: Date.now(),
+  const completedAt = Date.now()
+  const collectorUpdate = {
+    lastAttemptAt: completedAt,
     lastBrowserPublishStartedAt: startedAt,
     lastBrowserInventoryStartedAt: inventoryStartedAt,
     lastBrowserPublishBucketAt: cycleBucketAt,
     intervalMs: publishIntervalMs,
-    status: 'ok',
+    status: channelErrors.length ? 'partial-error' : 'ok',
+    error: channelErrors.join(' / ') || null,
     mode: 'browser',
     channels: scheduleSources.map((source) => source.key),
-  })
+  }
+
+  if (!channelErrors.length) collectorUpdate.lastSuccessAt = completedAt
+
+  await update(ref(rtdb, `${rtdbBasePath}/collector`), collectorUpdate)
 }
 
 export function useLocalRtdbPublisher() {

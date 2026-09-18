@@ -125,6 +125,12 @@ function getProductSessionKey(product) {
   return `${product.productId || ''}-${product.broadcastStartAt || 0}`
 }
 
+function pruneDetailState(now = Date.now()) {
+  for (const [key, product] of detailState.entries()) {
+    if ((product.broadcastEndAt || 0) < now - windowMs) detailState.delete(key)
+  }
+}
+
 function getWindowProducts(scheduleItems) {
   const now = new Date()
   const windowStart = now.getTime() - windowMs
@@ -150,6 +156,7 @@ function getWindowProducts(scheduleItems) {
 function updateStats(product, snapshot) {
   const sessionKey = getProductSessionKey(product)
   const previous = detailState.get(sessionKey)
+  const collectedAt = Date.now()
   const stock = snapshot.totalStock
   const price = snapshot.price || product.price || 0
   const delta = previous ? previous.lastStock - stock : 0
@@ -162,7 +169,8 @@ function updateStats(product, snapshot) {
   const history = [
     ...(previous?.history || []),
     {
-      collectedAt: Date.now(),
+      collectedAt,
+      sampleOk: true,
       active: true,
       stock,
       soldDelta,
@@ -184,7 +192,10 @@ function updateStats(product, snapshot) {
     estimatedRevenue,
     restockQuantity,
     history,
-    collectedAt: Date.now(),
+    collectedAt,
+    attemptedAt: collectedAt,
+    lastSuccessAt: collectedAt,
+    sampleOk: true,
   }
 
   detailState.set(sessionKey, next)
@@ -192,19 +203,26 @@ function updateStats(product, snapshot) {
 }
 
 export async function collectSkstoaInventory(scheduleItems = []) {
+  const attemptedAt = Date.now()
   const windowProducts = getWindowProducts(scheduleItems)
   const activeProducts = windowProducts.filter((product) => isActiveAt(product))
   const results = []
+  const errors = []
+  const activeSuccesses = []
 
   for (const product of activeProducts) {
     try {
       const html = await fetchText(`https://www.skstoa.com/display/goods/${product.productId}`)
       const snapshot = parseSkDetail(html, product)
-      results.push(updateStats(product, snapshot))
+      const result = updateStats(product, snapshot)
+      activeSuccesses.push(result)
+      results.push(result)
     } catch (error) {
       const previous = detailState.get(getProductSessionKey(product))
       if (previous) {
-        results.push({ ...previous, error: error.message })
+        results.push({ ...previous, attemptedAt, sampleOk: false, error: error.message })
+      } else {
+        errors.push(`${product.productId}: ${error.message}`)
       }
     }
   }
@@ -234,12 +252,20 @@ export async function collectSkstoaInventory(scheduleItems = []) {
       })
     }
   }
+  pruneDetailState()
+  const completedAt = Date.now()
 
   return {
     broadcaster: 'SK',
-    collectedAt: Date.now(),
+    attemptedAt,
+    collectedAt: completedAt,
+    lastSuccessAt: activeSuccesses.length ? Math.max(...activeSuccesses.map((product) => product.lastSuccessAt || product.collectedAt || 0)) : undefined,
     windowMinutes: maxSnapshots,
     products: results,
+    error: errors.join(' / ') || undefined,
+    errorCount: results.filter((product) => product.sampleOk === false).length,
+    requestedCount: activeProducts.length,
+    successCount: activeSuccesses.length,
     totals: results.reduce(
       (sum, product) => ({
         estimatedSold: sum.estimatedSold + (product.estimatedSold || 0),

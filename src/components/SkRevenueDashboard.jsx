@@ -93,7 +93,6 @@ function getProgramAtFromSchedule(item, latestAt) {
 }
 
 function buildProgramEvents(products, programItems, latestAt, windowStart, ensureRow) {
-  const productsById = new Map(products.map((product) => [String(product.productId), product]))
   const seen = new Set()
 
   return programItems
@@ -101,15 +100,19 @@ function buildProgramEvents(products, programItems, latestAt, windowStart, ensur
       const channel = getChannelDefBySource(item.sourceKey)
       if (!channel) return null
 
-      const matchedProduct = productsById.get(String(item.id)) || products.find((product) => product.url && product.url === item.url)
-      const programAt = matchedProduct?.broadcastStartAt || getProgramAtFromSchedule(item, latestAt)
+      const programAt = getProgramAtFromSchedule(item, latestAt)
       if (!programAt || programAt < windowStart || programAt > latestAt) return null
 
       const bucketAt = Math.floor(programAt / 60_000) * 60_000
-      const key = `${channel.key}-${bucketAt}-${item.id || item.title}`
+      const key = `${channel.key}-${bucketAt}`
       if (seen.has(key)) return null
       seen.add(key)
       ensureRow(bucketAt)
+      const matchedProduct = products.find(
+        (product) =>
+          String(product.productId) === String(item.id) &&
+          Math.abs((product.broadcastStartAt || 0) - programAt) < 60_000,
+      )
 
       return {
         bucketAt,
@@ -122,9 +125,9 @@ function buildProgramEvents(products, programItems, latestAt, windowStart, ensur
     .filter(Boolean)
 }
 
-function buildMinuteChart(products, collectedAt, programItems = []) {
+function buildMinuteChart(products, collectedAt, programItems = [], nowAt = Date.now()) {
   const rows = new Map()
-  const latestAt = collectedAt || Math.max(0, ...products.flatMap((product) => (product.history || []).map((point) => point.bucketAt || point.collectedAt || 0)))
+  const latestAt = nowAt || collectedAt || Math.max(0, ...products.flatMap((product) => (product.history || []).map((point) => point.bucketAt || point.collectedAt || 0)))
   const windowEnd = latestAt ? Math.floor(latestAt / 60_000) * 60_000 : 0
   const windowStart = windowEnd ? windowEnd - 119 * 60 * 1000 : 0
 
@@ -372,7 +375,7 @@ function getTenMinuteTicks(data) {
   return ticks
 }
 
-function getLatestChannelPoint(data, channel, latestAt) {
+function getLatestChannelPoint(data, channel, nowAt) {
   for (let index = data.length - 1; index >= 0; index -= 1) {
     const row = data[index]
     if (row[channel.key] != null) {
@@ -380,7 +383,7 @@ function getLatestChannelPoint(data, channel, latestAt) {
         ...channel,
         value: row[channel.key],
         bucketAt: row.bucketAt,
-        isStale: latestAt && latestAt - row.bucketAt > 2 * 60 * 1000,
+        isStale: nowAt && nowAt - row.bucketAt > 2 * 60 * 1000,
       }
     }
   }
@@ -653,12 +656,12 @@ function avoidBadgeCollisions(points, axisMax) {
   }))
 }
 
-function CombinedRevenueChart({ products, collectedAt, programs }) {
+function CombinedRevenueChart({ products, collectedAt, programs, nowAt }) {
   const chartRef = useRef(null)
   const [chartSize, setChartSize] = useState({ width: 0, height: 0 })
   const { data, programs: chartPrograms } = useMemo(
-    () => buildMinuteChart(products, collectedAt, programs),
-    [collectedAt, products, programs],
+    () => buildMinuteChart(products, collectedAt, programs, nowAt),
+    [collectedAt, nowAt, products, programs],
   )
   const rawMaxValue = Math.max(1, ...data.flatMap((row) => channelDefs.map((channel) => row[channel.key] || 0)))
   const tickStep = getTickStep(rawMaxValue)
@@ -667,7 +670,7 @@ function CombinedRevenueChart({ products, collectedAt, programs }) {
   const timeTicks = useMemo(() => getTenMinuteTicks(data), [data])
   const lastRow = data.at(-1)
   const currentPoints = avoidBadgeCollisions(
-    channelDefs.map((channel) => (lastRow ? getLatestChannelPoint(data, channel, lastRow.bucketAt) : null)),
+    channelDefs.map((channel) => (lastRow ? getLatestChannelPoint(data, channel, nowAt) : null)),
     axisMax,
   )
   const highlights = channelDefs
@@ -870,13 +873,19 @@ function CombinedRevenueChart({ products, collectedAt, programs }) {
 }
 
 export function CombinedRevenueDashboard({ inventories, programs }) {
+  const [nowAt, setNowAt] = useState(() => Date.now())
   const products = useMemo(() => normalizeProducts(inventories), [inventories])
   const latestCollectedAt = Math.max(0, ...inventories.map(({ inventory }) => inventory.collectedAt || 0))
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNowAt(Date.now()), 30_000)
+    return () => window.clearInterval(timer)
+  }, [])
 
   return (
     <section className="dashboardGrid combinedDashboard" aria-label="3사 통합 실시간 현황">
       <section className="revenuePanel" aria-label="3사 수집주기별 주문금액">
-        <CombinedRevenueChart products={products} collectedAt={latestCollectedAt} programs={programs} />
+        <CombinedRevenueChart products={products} collectedAt={latestCollectedAt} programs={programs} nowAt={nowAt} />
       </section>
     </section>
   )
