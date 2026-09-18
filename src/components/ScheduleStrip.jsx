@@ -36,16 +36,33 @@ function getDisplayName(product) {
   return (product.productName || product.productId || '').replace(/^\[[^\]]+\]/, '').trim()
 }
 
+function getProductRuntimeStats(product) {
+  return (product.history || []).reduce(
+    (sum, point) => {
+      const soldDelta = point.soldDelta || 0
+      return {
+        revenue: sum.revenue + (point.revenueDelta ?? soldDelta * (point.price || product.price || 0)),
+        sold: sum.sold + soldDelta,
+      }
+    },
+    { revenue: 0, sold: 0 },
+  )
+}
+
 function CurrentProductTable({ inventory, nowAt, theme }) {
   const currentAt = nowAt
   const currentProducts = [...(inventory.products || [])]
     .filter((product) => product.broadcastStartAt <= currentAt && product.broadcastEndAt >= currentAt)
-    .sort((a, b) => (b.estimatedRevenue || 0) - (a.estimatedRevenue || 0))
+    .map((product) => ({
+      ...product,
+      runtimeStats: getProductRuntimeStats(product),
+    }))
+    .sort((a, b) => b.runtimeStats.revenue - a.runtimeStats.revenue)
   const products = currentProducts.slice(0, 5)
   const pgmTotal = currentProducts.reduce(
     (sum, product) => ({
-      revenue: sum.revenue + (product.estimatedRevenue || 0),
-      sold: sum.sold + (product.estimatedSold || 0),
+      revenue: sum.revenue + product.runtimeStats.revenue,
+      sold: sum.sold + product.runtimeStats.sold,
     }),
     { revenue: 0, sold: 0 },
   )
@@ -69,8 +86,8 @@ function CurrentProductTable({ inventory, nowAt, theme }) {
           <a className="liveProductRow" href={product.url || undefined} key={product.productId} target="_blank">
             <span>{product.productId}</span>
             <strong>{getDisplayName(product)}</strong>
-            <b>{formatMoneyMillion(product.estimatedRevenue)}</b>
-            <em>{formatNumber(product.estimatedSold)}</em>
+            <b>{formatMoneyMillion(product.runtimeStats.revenue)}</b>
+            <em>{formatNumber(product.runtimeStats.sold)}</em>
           </a>
         ))}
         {!products.length ? <div className="liveProductEmpty">현재 방송 상품 수집 대기 중</div> : null}
