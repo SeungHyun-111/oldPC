@@ -37,12 +37,12 @@ function getDisplayName(product) {
 }
 
 function CurrentProductTable({ inventory, nowAt, theme }) {
-  const currentAt = inventory.collectedAt || nowAt
-  const products = [...(inventory.products || [])]
+  const currentAt = nowAt
+  const currentProducts = [...(inventory.products || [])]
     .filter((product) => product.broadcastStartAt <= currentAt && product.broadcastEndAt >= currentAt)
     .sort((a, b) => (b.estimatedRevenue || 0) - (a.estimatedRevenue || 0))
-    .slice(0, 5)
-  const pgmTotal = products.reduce(
+  const products = currentProducts.slice(0, 5)
+  const pgmTotal = currentProducts.reduce(
     (sum, product) => ({
       revenue: sum.revenue + (product.estimatedRevenue || 0),
       sold: sum.sold + (product.estimatedSold || 0),

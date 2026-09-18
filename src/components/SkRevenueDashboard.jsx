@@ -57,9 +57,9 @@ function getChannelDefBySource(sourceKey) {
 function getDeltaPoint(product, point, previous) {
   const hasSoldDelta = point.soldDelta != null
   const soldDelta = hasSoldDelta ? point.soldDelta || 0 : Math.max((point.estimatedSold || 0) - (previous?.estimatedSold || 0), 0)
-  const revenueDelta = hasSoldDelta
+  const revenueDelta = point.revenueDelta ?? (hasSoldDelta
     ? soldDelta * (product.price || 0)
-    : Math.max((point.estimatedRevenue || 0) - (previous?.estimatedRevenue || 0), 0)
+    : Math.max((point.estimatedRevenue || 0) - (previous?.estimatedRevenue || 0), 0))
 
   return {
     soldDelta,
@@ -284,6 +284,7 @@ function CurrentBadge({ point }) {
       }}
     >
       {formatKRW(point.value)}
+      {point.isStale ? <span>지연</span> : null}
     </div>
   )
 }
@@ -369,6 +370,27 @@ function getTenMinuteTicks(data) {
   if (!ticks.includes(end)) ticks.push(end)
 
   return ticks
+}
+
+function getLatestChannelPoint(data, channel, latestAt) {
+  for (let index = data.length - 1; index >= 0; index -= 1) {
+    const row = data[index]
+    if (row[channel.key] != null) {
+      return {
+        ...channel,
+        value: row[channel.key],
+        bucketAt: row.bucketAt,
+        isStale: latestAt && latestAt - row.bucketAt > 2 * 60 * 1000,
+      }
+    }
+  }
+
+  return {
+    ...channel,
+    value: 0,
+    bucketAt: null,
+    isStale: true,
+  }
 }
 
 function getNearestCardEdge(anchor, rect) {
@@ -645,14 +667,7 @@ function CombinedRevenueChart({ products, collectedAt, programs }) {
   const timeTicks = useMemo(() => getTenMinuteTicks(data), [data])
   const lastRow = data.at(-1)
   const currentPoints = avoidBadgeCollisions(
-    channelDefs.map((channel) =>
-      lastRow
-        ? {
-            ...channel,
-            value: lastRow[channel.key] || 0,
-          }
-        : null,
-    ),
+    channelDefs.map((channel) => (lastRow ? getLatestChannelPoint(data, channel, lastRow.bucketAt) : null)),
     axisMax,
   )
   const highlights = channelDefs

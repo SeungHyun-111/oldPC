@@ -121,6 +121,10 @@ function intersectsWindow(product, windowStart, windowEnd) {
   return product.broadcastStartAt <= windowEnd && product.broadcastEndAt >= windowStart
 }
 
+function getProductSessionKey(product) {
+  return `${product.productId || ''}-${product.broadcastStartAt || 0}`
+}
+
 function getWindowProducts(scheduleItems) {
   const now = new Date()
   const windowStart = now.getTime() - windowMs
@@ -144,13 +148,16 @@ function getWindowProducts(scheduleItems) {
 }
 
 function updateStats(product, snapshot) {
-  const previous = detailState.get(product.productId)
+  const sessionKey = getProductSessionKey(product)
+  const previous = detailState.get(sessionKey)
   const stock = snapshot.totalStock
   const price = snapshot.price || product.price || 0
   const delta = previous ? previous.lastStock - stock : 0
   const soldDelta = Math.max(delta, 0)
+  const revenueDelta = soldDelta * price
   const restockDelta = Math.max(-delta, 0)
   const estimatedSold = (previous?.estimatedSold || 0) + soldDelta
+  const estimatedRevenue = (previous?.estimatedRevenue || 0) + revenueDelta
   const restockQuantity = (previous?.restockQuantity || 0) + restockDelta
   const history = [
     ...(previous?.history || []),
@@ -159,8 +166,10 @@ function updateStats(product, snapshot) {
       active: true,
       stock,
       soldDelta,
+      revenueDelta,
+      price,
       estimatedSold,
-      estimatedRevenue: estimatedSold * price,
+      estimatedRevenue,
     },
   ].slice(-maxSnapshots)
 
@@ -172,13 +181,13 @@ function updateStats(product, snapshot) {
     lastStock: stock,
     soldDelta,
     estimatedSold,
-    estimatedRevenue: estimatedSold * price,
+    estimatedRevenue,
     restockQuantity,
     history,
     collectedAt: Date.now(),
   }
 
-  detailState.set(product.productId, next)
+  detailState.set(sessionKey, next)
   return next
 }
 
@@ -193,7 +202,7 @@ export async function collectSkstoaInventory(scheduleItems = []) {
       const snapshot = parseSkDetail(html, product)
       results.push(updateStats(product, snapshot))
     } catch (error) {
-      const previous = detailState.get(product.productId)
+      const previous = detailState.get(getProductSessionKey(product))
       if (previous) {
         results.push({ ...previous, error: error.message })
       }
@@ -201,8 +210,8 @@ export async function collectSkstoaInventory(scheduleItems = []) {
   }
 
   for (const product of windowProducts) {
-    if (activeProducts.some((activeProduct) => activeProduct.productId === product.productId)) continue
-    const previous = detailState.get(product.productId)
+    if (activeProducts.some((activeProduct) => getProductSessionKey(activeProduct) === getProductSessionKey(product))) continue
+    const previous = detailState.get(getProductSessionKey(product))
     if (previous) {
       results.push({
         ...previous,

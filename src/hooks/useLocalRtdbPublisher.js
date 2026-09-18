@@ -37,6 +37,10 @@ function getPointBucketAt(point, fallbackAt) {
   return point.bucketAt || getMinuteBucketAt(point.collectedAt || fallbackAt)
 }
 
+function getProductSessionKey(product) {
+  return `${product.productId || ''}-${product.broadcastStartAt || 0}`
+}
+
 function normalizeHistory(history, collectedAt, cycleBucketAt) {
   const cutoffAt = getMinuteBucketAt(collectedAt - historyWindowMs)
   const byBucket = new Map()
@@ -52,6 +56,7 @@ function normalizeHistory(history, collectedAt, cycleBucketAt) {
       bucketAt,
       collectedAt: Math.max(previous?.collectedAt || 0, point.collectedAt || bucketAt),
       soldDelta: (previous?.soldDelta || 0) + (point.soldDelta || 0),
+      revenueDelta: (previous?.revenueDelta || 0) + (point.revenueDelta ?? (point.soldDelta || 0) * (point.price || 0)),
     })
   }
 
@@ -86,8 +91,9 @@ function mergeInventoryProduct(nextProduct, previousProduct, collectedAt, cycleB
   const currentStock = nextProduct.currentStock || nextProduct.totalStock || 0
   const previousStock = previousProduct.currentStock ?? previousProduct.lastStock ?? currentStock
   const soldDelta = Math.max(previousStock - currentStock, 0)
+  const revenueDelta = soldDelta * price
   const estimatedSold = (previousProduct.estimatedSold || 0) + soldDelta
-  const estimatedRevenue = estimatedSold * price
+  const estimatedRevenue = (previousProduct.estimatedRevenue || 0) + revenueDelta
   const history = normalizeHistory(previousProduct.history, collectedAt, cycleBucketAt)
 
   history.push({
@@ -96,6 +102,8 @@ function mergeInventoryProduct(nextProduct, previousProduct, collectedAt, cycleB
     active: true,
     stock: currentStock,
     soldDelta,
+    revenueDelta,
+    price,
     estimatedSold,
     estimatedRevenue,
   })
@@ -117,11 +125,11 @@ function mergeInventoryProduct(nextProduct, previousProduct, collectedAt, cycleB
 
 function mergeInventoryPayload(nextInventory, previousInventory, cycleBucketAt) {
   const collectedAt = nextInventory.collectedAt || Date.now()
-  const previousById = new Map((previousInventory?.products || []).map((product) => [product.productId, product]))
+  const previousBySession = new Map((previousInventory?.products || []).map((product) => [getProductSessionKey(product), product]))
   const nextProducts = nextInventory.products || []
 
   const products = nextProducts.length
-    ? nextProducts.map((product) => mergeInventoryProduct(product, previousById.get(product.productId), collectedAt, cycleBucketAt))
+    ? nextProducts.map((product) => mergeInventoryProduct(product, previousBySession.get(getProductSessionKey(product)), collectedAt, cycleBucketAt))
     : (previousInventory?.products || [])
         .map((product) => ({
           ...product,

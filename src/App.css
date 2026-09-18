@@ -682,6 +682,14 @@
   color: white;
 }
 
+.current-badge span {
+  display: block;
+  margin-top: 1px;
+  font-size: 9px;
+  font-weight: 900;
+  opacity: 0.72;
+}
+
 .recharts-cartesian-grid line {
   shape-rendering: crispEdges;
 }
