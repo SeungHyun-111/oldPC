@@ -302,6 +302,34 @@ function getTickStep(value) {
   return 100_000_000
 }
 
+function getChartScaleInfo(data) {
+  const values = data.flatMap((row) => channelDefs.map((channel) => row[channel.key] || 0))
+  const rawMaxValue = Math.max(1, ...values)
+  const channelPeaks = channelDefs
+    .map((channel) => ({
+      ...channel,
+      value: Math.max(0, ...data.map((row) => row[channel.key] || 0)),
+    }))
+    .sort((a, b) => b.value - a.value)
+  const [topPeak, ...otherPeaks] = channelPeaks
+  const otherMax = Math.max(0, ...otherPeaks.map((peak) => peak.value))
+  const hasSingleChannelSpike = topPeak && otherPeaks.length === 2 && otherPeaks.every((peak) => topPeak.value > peak.value * 3)
+  const scaleValues =
+    hasSingleChannelSpike
+      ? values.filter((value) => value <= otherMax * 3)
+      : values
+  const scaleMaxValue = Math.max(1, ...scaleValues)
+  const tickStep = getTickStep(scaleMaxValue)
+  const axisMax = Math.max(tickStep, Math.ceil((scaleMaxValue * 1.08) / tickStep) * tickStep)
+
+  return {
+    axisMax,
+    rawMaxValue,
+    tickStep,
+    outlierChannelKey: hasSingleChannelSpike ? topPeak.key : null,
+  }
+}
+
 const yAxisWidth = 96
 const xAxisHeight = 28
 const overlayGap = 10
@@ -354,7 +382,10 @@ function getScales(data, axisMax, chartSize, chartMargin) {
   return {
     plot,
     x: (bucketAt) => plot.left + ((bucketAt - firstAt) / Math.max(lastAt - firstAt, 1)) * (plot.right - plot.left),
-    y: (value) => plot.bottom - (value / Math.max(axisMax, 1)) * (plot.bottom - plot.top),
+    y: (value) => {
+      if (value > axisMax) return plot.top - 24
+      return plot.bottom - (value / Math.max(axisMax, 1)) * (plot.bottom - plot.top)
+    },
   }
 }
 
@@ -663,9 +694,8 @@ function CombinedRevenueChart({ products, collectedAt, programs, nowAt }) {
     () => buildMinuteChart(products, collectedAt, programs, nowAt),
     [collectedAt, nowAt, products, programs],
   )
-  const rawMaxValue = Math.max(1, ...data.flatMap((row) => channelDefs.map((channel) => row[channel.key] || 0)))
-  const tickStep = getTickStep(rawMaxValue)
-  const axisMax = Math.max(tickStep, Math.ceil((rawMaxValue * 1.08) / tickStep) * tickStep)
+  const scaleInfo = useMemo(() => getChartScaleInfo(data), [data])
+  const { axisMax, tickStep } = scaleInfo
   const ticks = Array.from({ length: Math.floor(axisMax / tickStep) + 1 }, (_, index) => index * tickStep)
   const timeTicks = useMemo(() => getTenMinuteTicks(data), [data])
   const lastRow = data.at(-1)
@@ -806,6 +836,7 @@ function CombinedRevenueChart({ products, collectedAt, programs, nowAt }) {
               tick={{ fill: '#91a5bd', fontSize: 11 }}
               axisLine={false}
               tickLine={false}
+              allowDataOverflow
             />
             <Tooltip
               content={<CustomTooltip />}
