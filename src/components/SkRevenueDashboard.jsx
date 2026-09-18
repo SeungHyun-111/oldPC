@@ -381,7 +381,7 @@ function getNearestCardEdge(anchor, rect) {
   }
 }
 
-function placeRect(candidates, occupied, bounds) {
+function placeRect(candidates, occupied, bounds, avoid = []) {
   let best = null
 
   for (const candidate of candidates) {
@@ -390,12 +390,102 @@ function placeRect(candidates, occupied, bounds) {
       x: clamp(candidate.x, bounds.left, bounds.right - candidate.width),
       y: clamp(candidate.y, bounds.top, bounds.bottom - candidate.height),
     }
-    const score = occupied.reduce((sum, entry) => sum + overlapArea(rect, entry), 0)
-    if (!occupied.some((entry) => intersects(rect, entry))) return rect
+    const hardScore = occupied.reduce((sum, entry) => sum + overlapArea(rect, entry), 0)
+    const avoidScore = avoid.reduce((sum, entry) => sum + overlapArea(rect, entry), 0)
+    const hardBlocked = occupied.some((entry) => intersects(rect, entry))
+    const avoidBlocked = avoid.some((entry) => intersects(rect, entry, 4))
+    const distanceScore = candidate.distanceScore || 0
+    const score = (hardBlocked ? 1_000_000_000 : 0) + (avoidBlocked ? 10_000_000 : 0) + hardScore * 100 + avoidScore * 20 + distanceScore
+    if (!hardBlocked && !avoidBlocked && !avoidScore) return rect
     if (!best || score < best.score) best = { ...rect, score }
   }
 
   return best
+}
+
+function getLineAvoidRects(data, scales) {
+  const rects = []
+  const pointPad = 22
+  const segmentPad = 18
+
+  for (const channel of channelDefs) {
+    let previous = null
+
+    for (const row of data) {
+      const value = row[channel.key]
+      if (value == null) {
+        previous = null
+        continue
+      }
+
+      const point = {
+        x: scales.x(row.bucketAt),
+        y: scales.y(value),
+      }
+
+      rects.push({
+        x: point.x - pointPad,
+        y: point.y - pointPad,
+        width: pointPad * 2,
+        height: pointPad * 2,
+      })
+
+      if (previous) {
+        const x = Math.min(previous.x, point.x)
+        const y = Math.min(previous.y, point.y)
+        rects.push({
+          x: x - segmentPad,
+          y: y - segmentPad,
+          width: Math.abs(previous.x - point.x) + segmentPad * 2,
+          height: Math.abs(previous.y - point.y) + segmentPad * 2,
+        })
+      }
+
+      previous = point
+    }
+  }
+
+  return rects
+}
+
+function getHighlightCandidates(anchor, bounds) {
+  const positions = []
+  const xOffsets = [34, 72, 112]
+  const yOffsets = [28, 58, 90]
+
+  for (const xOffset of xOffsets) {
+    for (const yOffset of yOffsets) {
+      positions.push(
+        { x: anchor.x + xOffset, y: anchor.y - highlightCard.height - yOffset },
+        { x: anchor.x - highlightCard.width - xOffset, y: anchor.y - highlightCard.height - yOffset },
+        { x: anchor.x + xOffset, y: anchor.y + yOffset },
+        { x: anchor.x - highlightCard.width - xOffset, y: anchor.y + yOffset },
+      )
+    }
+  }
+
+  positions.push(
+    { x: anchor.x - highlightCard.width / 2, y: anchor.y - highlightCard.height - 110 },
+    { x: anchor.x - highlightCard.width / 2, y: anchor.y + 96 },
+    { x: anchor.x + 132, y: anchor.y - highlightCard.height / 2 },
+    { x: anchor.x - highlightCard.width - 132, y: anchor.y - highlightCard.height / 2 },
+  )
+
+  const gridStepX = 42
+  const gridStepY = 26
+  for (let y = bounds.top; y <= bounds.bottom - highlightCard.height; y += gridStepY) {
+    for (let x = bounds.left; x <= bounds.right - highlightCard.width; x += gridStepX) {
+      positions.push({ x, y })
+    }
+  }
+
+  return positions
+    .map((candidate) => ({
+      ...candidate,
+      ...highlightCard,
+      distanceScore: Math.hypot(candidate.x + highlightCard.width / 2 - anchor.x, candidate.y + highlightCard.height / 2 - anchor.y) * 0.7,
+    }))
+    .sort((a, b) => a.distanceScore - b.distanceScore)
 }
 
 function layoutGraphOverlays({ programs, highlights, currentPoints, data, axisMax, chartSize, chartMargin }) {
@@ -404,12 +494,19 @@ function layoutGraphOverlays({ programs, highlights, currentPoints, data, axisMa
   }
 
   const scales = getScales(data, axisMax, chartSize, chartMargin)
+  const lineAvoidRects = getLineAvoidRects(data, scales)
   const occupied = []
   const bounds = {
     left: 4,
     top: 4,
     right: chartSize.width - 4,
     bottom: chartSize.height - 4,
+  }
+  const highlightBounds = {
+    left: scales.plot.left + 6,
+    top: scales.plot.top + 6,
+    right: scales.plot.right - 6,
+    bottom: scales.plot.bottom - 6,
   }
 
   for (const point of currentPoints) {
@@ -464,15 +561,8 @@ function layoutGraphOverlays({ programs, highlights, currentPoints, data, axisMa
       x: scales.x(row?.bucketAt || 0),
       y: scales.y(point.value),
     }
-    const candidates = [
-      { x: anchor.x + 28, y: anchor.y - highlightCard.height - 26 },
-      { x: anchor.x - highlightCard.width - 28, y: anchor.y - highlightCard.height - 26 },
-      { x: anchor.x + 28, y: anchor.y + 24 },
-      { x: anchor.x - highlightCard.width - 28, y: anchor.y + 24 },
-      { x: anchor.x - highlightCard.width / 2, y: anchor.y - highlightCard.height - 34 },
-      { x: anchor.x - highlightCard.width / 2, y: anchor.y + 32 },
-    ].map((candidate) => ({ ...candidate, ...highlightCard }))
-    const rect = placeRect(candidates, occupied, bounds)
+    const candidates = getHighlightCandidates(anchor, highlightBounds)
+    const rect = placeRect(candidates, occupied, highlightBounds, lineAvoidRects)
     const edge = getNearestCardEdge(anchor, rect)
     occupied.push(rect)
 
