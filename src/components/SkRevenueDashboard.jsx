@@ -55,9 +55,11 @@ function getChannelDefBySource(sourceKey) {
 }
 
 function getDeltaPoint(product, point, previous) {
-  const soldDelta = point.soldDelta ?? Math.max((point.estimatedSold || 0) - (previous?.estimatedSold || 0), 0)
-  const revenueDelta =
-    soldDelta * (product.price || 0) || Math.max((point.estimatedRevenue || 0) - (previous?.estimatedRevenue || 0), 0)
+  const hasSoldDelta = point.soldDelta != null
+  const soldDelta = hasSoldDelta ? point.soldDelta || 0 : Math.max((point.estimatedSold || 0) - (previous?.estimatedSold || 0), 0)
+  const revenueDelta = hasSoldDelta
+    ? soldDelta * (product.price || 0)
+    : Math.max((point.estimatedRevenue || 0) - (previous?.estimatedRevenue || 0), 0)
 
   return {
     soldDelta,
@@ -123,7 +125,8 @@ function buildProgramEvents(products, programItems, latestAt, windowStart, ensur
 function buildMinuteChart(products, collectedAt, programItems = []) {
   const rows = new Map()
   const latestAt = collectedAt || Math.max(0, ...products.flatMap((product) => (product.history || []).map((point) => point.bucketAt || point.collectedAt || 0)))
-  const windowStart = latestAt ? latestAt - 120 * 60 * 1000 : 0
+  const windowEnd = latestAt ? Math.floor(latestAt / 60_000) * 60_000 : 0
+  const windowStart = windowEnd ? windowEnd - 119 * 60 * 1000 : 0
 
   function ensureRow(bucketAt) {
     if (!rows.has(bucketAt)) {
@@ -139,6 +142,12 @@ function buildMinuteChart(products, collectedAt, programItems = []) {
       })
     }
     return rows.get(bucketAt)
+  }
+
+  if (windowEnd) {
+    for (let bucketAt = windowStart; bucketAt <= windowEnd; bucketAt += 60_000) {
+      ensureRow(bucketAt)
+    }
   }
 
   for (const product of products) {

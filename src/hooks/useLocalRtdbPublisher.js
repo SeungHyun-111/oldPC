@@ -29,19 +29,33 @@ function getHistory(history) {
   return history || []
 }
 
-function trimHistory(history, collectedAt) {
-  return getHistory(history).filter((point) => point.collectedAt >= collectedAt - historyWindowMs).slice(-120)
-}
-
 function getMinuteBucketAt(value) {
   return Math.floor(value / 60_000) * 60_000
 }
 
+function getPointBucketAt(point, fallbackAt) {
+  return point.bucketAt || getMinuteBucketAt(point.collectedAt || fallbackAt)
+}
+
 function normalizeHistory(history, collectedAt, cycleBucketAt) {
-  return trimHistory(history, collectedAt).map((point) => ({
-    ...point,
-    bucketAt: point.bucketAt || getMinuteBucketAt(point.collectedAt || cycleBucketAt),
-  }))
+  const cutoffAt = getMinuteBucketAt(collectedAt - historyWindowMs)
+  const byBucket = new Map()
+
+  for (const point of getHistory(history).sort((a, b) => (a.collectedAt || 0) - (b.collectedAt || 0))) {
+    const bucketAt = getPointBucketAt(point, cycleBucketAt)
+    if (bucketAt < cutoffAt) continue
+
+    const previous = byBucket.get(bucketAt)
+    byBucket.set(bucketAt, {
+      ...(previous || {}),
+      ...point,
+      bucketAt,
+      collectedAt: Math.max(previous?.collectedAt || 0, point.collectedAt || bucketAt),
+      soldDelta: (previous?.soldDelta || 0) + (point.soldDelta || 0),
+    })
+  }
+
+  return [...byBucket.values()].sort((a, b) => a.bucketAt - b.bucketAt).slice(-120)
 }
 
 function mergeInventoryProduct(nextProduct, previousProduct, collectedAt, cycleBucketAt) {
