@@ -8,7 +8,7 @@ import { scheduleSources } from './sources/scheduleSources'
 import './App.css'
 
 function App() {
-  const publisher = useLocalRtdbPublisher()
+  useLocalRtdbPublisher()
   const schedules = useSchedules()
   const skInventory = useChannelInventory('skstoa', 'SK')
   const shinsegaeInventory = useChannelInventory('shinsegae', '신세계')
@@ -27,13 +27,6 @@ function App() {
 
   return (
     <main className="page">
-      {publisher.enabled ? (
-        <div className={`publisherStatus ${publisher.error ? 'isError' : ''}`}>
-          <span>{publisher.running ? 'RTDB 전송 중' : 'RTDB 전송 대기'}</span>
-          {publisher.lastSuccessAt ? <time>{new Date(publisher.lastSuccessAt).toLocaleTimeString('ko-KR')}</time> : null}
-          {publisher.error ? <strong>{publisher.error}</strong> : null}
-        </div>
-      ) : null}
       {scheduleSources.map((source) => (
         <ScheduleStrip
           key={source.key}

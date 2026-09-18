@@ -122,7 +122,7 @@ function buildProgramEvents(products, programItems, latestAt, windowStart, ensur
 
 function buildMinuteChart(products, collectedAt, programItems = []) {
   const rows = new Map()
-  const latestAt = collectedAt || Math.max(0, ...products.flatMap((product) => (product.history || []).map((point) => point.collectedAt || 0)))
+  const latestAt = collectedAt || Math.max(0, ...products.flatMap((product) => (product.history || []).map((point) => point.bucketAt || point.collectedAt || 0)))
   const windowStart = latestAt ? latestAt - 120 * 60 * 1000 : 0
 
   function ensureRow(bucketAt) {
@@ -145,12 +145,14 @@ function buildMinuteChart(products, collectedAt, programItems = []) {
     const channel = getChannelDef(product.channel)
     if (!channel) continue
 
-    const history = [...(product.history || [])].sort((a, b) => (a.collectedAt || 0) - (b.collectedAt || 0))
+    const history = [...(product.history || [])].sort(
+      (a, b) => (a.bucketAt || a.collectedAt || 0) - (b.bucketAt || b.collectedAt || 0),
+    )
     for (const [index, point] of history.entries()) {
-      if (!point.collectedAt || point.collectedAt < windowStart) continue
+      const pointBucketAt = point.bucketAt || (point.collectedAt ? Math.floor(point.collectedAt / 60_000) * 60_000 : 0)
+      if (!pointBucketAt || pointBucketAt < windowStart) continue
 
-      const bucketAt = Math.floor(point.collectedAt / 60_000) * 60_000
-      const row = ensureRow(bucketAt)
+      const row = ensureRow(pointBucketAt)
       const { soldDelta, revenueDelta } = getDeltaPoint(product, point, history[index - 1])
       row[channel.key] = (row[channel.key] || 0) + revenueDelta
       row[`${channel.key}Count`] += soldDelta

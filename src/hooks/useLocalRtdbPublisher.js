@@ -33,8 +33,25 @@ function trimHistory(history, collectedAt) {
   return getHistory(history).filter((point) => point.collectedAt >= collectedAt - historyWindowMs).slice(-120)
 }
 
-function mergeInventoryProduct(nextProduct, previousProduct, collectedAt) {
-  if (!previousProduct) return nextProduct
+function getMinuteBucketAt(value) {
+  return Math.floor(value / 60_000) * 60_000
+}
+
+function normalizeHistory(history, collectedAt, cycleBucketAt) {
+  return trimHistory(history, collectedAt).map((point) => ({
+    ...point,
+    bucketAt: point.bucketAt || getMinuteBucketAt(point.collectedAt || cycleBucketAt),
+  }))
+}
+
+function mergeInventoryProduct(nextProduct, previousProduct, collectedAt, cycleBucketAt) {
+  if (!previousProduct) {
+    return {
+      ...nextProduct,
+      history: normalizeHistory(nextProduct.history, collectedAt, cycleBucketAt),
+      collectedAt,
+    }
+  }
 
   if (collectedAt >= (nextProduct.broadcastEndAt || previousProduct.broadcastEndAt || 0) - endBufferMs) {
     return {
@@ -46,7 +63,7 @@ function mergeInventoryProduct(nextProduct, previousProduct, collectedAt) {
       soldDelta: 0,
       estimatedSold: previousProduct.estimatedSold || 0,
       estimatedRevenue: previousProduct.estimatedRevenue || 0,
-      history: trimHistory(previousProduct.history, collectedAt),
+      history: normalizeHistory(previousProduct.history, collectedAt, cycleBucketAt),
       collectedAt,
     }
   }
@@ -57,10 +74,11 @@ function mergeInventoryProduct(nextProduct, previousProduct, collectedAt) {
   const soldDelta = Math.max(previousStock - currentStock, 0)
   const estimatedSold = (previousProduct.estimatedSold || 0) + soldDelta
   const estimatedRevenue = estimatedSold * price
-  const history = trimHistory(previousProduct.history, collectedAt)
+  const history = normalizeHistory(previousProduct.history, collectedAt, cycleBucketAt)
 
   history.push({
     collectedAt,
+    bucketAt: cycleBucketAt,
     active: true,
     stock: currentStock,
     soldDelta,
@@ -78,22 +96,22 @@ function mergeInventoryProduct(nextProduct, previousProduct, collectedAt) {
     soldDelta,
     estimatedSold,
     estimatedRevenue,
-    history: trimHistory(history, collectedAt),
+    history: normalizeHistory(history, collectedAt, cycleBucketAt),
     collectedAt,
   }
 }
 
-function mergeInventoryPayload(nextInventory, previousInventory) {
+function mergeInventoryPayload(nextInventory, previousInventory, cycleBucketAt) {
   const collectedAt = nextInventory.collectedAt || Date.now()
   const previousById = new Map((previousInventory?.products || []).map((product) => [product.productId, product]))
   const nextProducts = nextInventory.products || []
 
   const products = nextProducts.length
-    ? nextProducts.map((product) => mergeInventoryProduct(product, previousById.get(product.productId), collectedAt))
+    ? nextProducts.map((product) => mergeInventoryProduct(product, previousById.get(product.productId), collectedAt, cycleBucketAt))
     : (previousInventory?.products || [])
         .map((product) => ({
           ...product,
-          history: trimHistory(product.history, collectedAt),
+          history: normalizeHistory(product.history, collectedAt, cycleBucketAt),
         }))
         .filter((product) => product.history.length || product.broadcastEndAt >= collectedAt)
 
@@ -132,16 +150,21 @@ async function publishOnce() {
     await set(ref(rtdb, `${rtdbBasePath}/channels/${source.key}/schedule`), payload)
   }
 
+  const inventoryStartedAt = Date.now()
+  const cycleBucketAt = getMinuteBucketAt(inventoryStartedAt)
+
   for (const source of inventorySources) {
     const inventory = await fetchJson(source.endpoint)
     const inventoryRef = ref(rtdb, `${rtdbBasePath}/channels/${source.key}/inventory`)
     const previousInventory = (await get(inventoryRef)).val()
-    await set(inventoryRef, sanitizeFirebaseValue(mergeInventoryPayload(inventory, previousInventory)))
+    await set(inventoryRef, sanitizeFirebaseValue(mergeInventoryPayload(inventory, previousInventory, cycleBucketAt)))
   }
 
   await update(ref(rtdb, `${rtdbBasePath}/collector`), {
     lastSuccessAt: Date.now(),
     lastBrowserPublishStartedAt: startedAt,
+    lastBrowserInventoryStartedAt: inventoryStartedAt,
+    lastBrowserPublishBucketAt: cycleBucketAt,
     intervalMs: publishIntervalMs,
     status: 'ok',
     mode: 'browser',

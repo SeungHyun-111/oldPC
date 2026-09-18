@@ -47,7 +47,9 @@
 .scheduleStrip {
   display: grid;
   grid-template-columns: 74px minmax(0, 1fr) minmax(300px, 25vw);
+  height: 106px;
   min-height: 106px;
+  box-sizing: border-box;
   padding: 6px 12px 0;
   gap: 8px;
   align-items: stretch;
@@ -144,8 +146,8 @@
   display: grid;
   grid-template-rows: 23px 1fr;
   flex: 0 0 auto;
-  width: fit-content;
-  min-width: 150px;
+  width: max-content;
+  min-width: 225px;
   border: 1px solid color-mix(in srgb, var(--channel-accent) 44%, rgba(255, 255, 255, 0.12));
   border-radius: 8px;
   background: linear-gradient(145deg, rgba(5, 17, 31, 0.9), rgba(2, 8, 15, 0.9));
@@ -191,17 +193,25 @@
 .products {
   display: flex;
   min-width: 0;
-  overflow: visible;
-  overflow-y: hidden;
+  width: max-content;
+  max-width: none;
+  overflow: visible !important;
+  overflow-x: visible !important;
+  overflow-y: visible !important;
+  scrollbar-width: none;
   border-top: 0;
+}
+
+.products::-webkit-scrollbar {
+  display: none;
 }
 
 .productRow {
   display: grid;
-  grid-template-columns: 44px 116px;
+  grid-template-columns: 58px 168px;
   align-items: center;
   gap: 8px;
-  flex: 0 0 184px;
+  flex: 0 0 252px;
   min-width: 0;
   padding: 6px 8px;
   border-right: 1px solid rgba(255, 255, 255, 0.14);
@@ -214,8 +224,8 @@
 }
 
 .thumb {
-  width: 44px;
-  height: 44px;
+  width: 58px;
+  height: 58px;
   border-radius: 6px;
   object-fit: cover;
   background: rgba(255, 255, 255, 0.1);
@@ -235,7 +245,7 @@
 .info strong {
   overflow: hidden;
   color: #f8fafc;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 900;
   line-height: 1.28;
   text-overflow: ellipsis;
@@ -245,7 +255,7 @@
 .info span {
   overflow: hidden;
   color: #cbd5e1;
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.35;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -256,21 +266,12 @@
   display: grid;
   grid-template-rows: auto auto 1fr;
   min-width: 0;
+  min-height: 0;
   border: 1px solid color-mix(in srgb, var(--channel-accent) 72%, transparent);
   border-radius: 8px;
   background: linear-gradient(145deg, rgba(5, 17, 31, 0.94), rgba(2, 8, 15, 0.94));
   box-shadow: 0 0 22px color-mix(in srgb, var(--channel-accent) 24%, transparent);
   overflow: hidden;
-}
-
-.liveProductPanel header {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 8px 4px;
-  color: #dce6f3;
-  font-size: 10px;
-  font-weight: 900;
 }
 
 .liveDot {
@@ -279,6 +280,45 @@
   border-radius: 999px;
   background: var(--channel-accent);
   box-shadow: 0 0 14px color-mix(in srgb, var(--channel-accent) 75%, transparent);
+}
+
+.livePgmTotal {
+  display: grid;
+  grid-template-columns: 10px 62px minmax(0, 1fr) 54px;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 5px 7px;
+  border: 0;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 0;
+  background: rgba(2, 9, 17, 0.46);
+  color: #dce6f3;
+}
+
+.livePgmTotal span {
+  color: #91a5bd;
+  font-size: 9px;
+  font-weight: 900;
+}
+
+.livePgmTotal strong {
+  overflow: hidden;
+  color: var(--channel-accent);
+  font-size: 12px;
+  font-weight: 950;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.livePgmTotal em {
+  color: #f8fafc;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 900;
+  text-align: right;
+  white-space: nowrap;
 }
 
 .liveProductHead,
@@ -301,7 +341,20 @@
 .liveProductRows {
   display: grid;
   align-content: start;
-  overflow: hidden;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--channel-accent) 54%, transparent) transparent;
+}
+
+.liveProductRows::-webkit-scrollbar {
+  width: 5px;
+}
+
+.liveProductRows::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--channel-accent) 54%, transparent);
 }
 
 .liveProductRow {

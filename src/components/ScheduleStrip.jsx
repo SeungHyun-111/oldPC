@@ -24,8 +24,12 @@ function formatMoneyMillion(value) {
   return `${((value || 0) / 1_000_000).toFixed(1)}`
 }
 
+function formatKRW(value) {
+  return `${Math.round(value || 0).toLocaleString('ko-KR')}원`
+}
+
 function formatNumber(value) {
-  return Math.round(value || 0).toLocaleString()
+  return Math.round(value || 0).toLocaleString('ko-KR')
 }
 
 function getDisplayName(product) {
@@ -38,12 +42,21 @@ function CurrentProductTable({ inventory, nowAt, theme }) {
     .filter((product) => product.broadcastStartAt <= currentAt && product.broadcastEndAt >= currentAt)
     .sort((a, b) => (b.estimatedRevenue || 0) - (a.estimatedRevenue || 0))
     .slice(0, 5)
+  const pgmTotal = products.reduce(
+    (sum, product) => ({
+      revenue: sum.revenue + (product.estimatedRevenue || 0),
+      sold: sum.sold + (product.estimatedSold || 0),
+    }),
+    { revenue: 0, sold: 0 },
+  )
 
   return (
     <aside className="liveProductPanel" aria-label="현재 방송 상품별 주문금액">
-      <header>
+      <header className="livePgmTotal">
         <span className="liveDot" />
-        <strong>현재 방송 코드별 주문금액/건수</strong>
+        <span>현PGM누계</span>
+        <strong>{formatKRW(pgmTotal.revenue)}</strong>
+        <em>{formatNumber(pgmTotal.sold)}건</em>
       </header>
       <div className="liveProductHead">
         <span>코드</span>
