@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { formatLoadedAt, getItemStatus, getMinuteValue, groupByTime } from '../utils/scheduleTime'
+import { getItemStatus, getMinuteValue, groupByTime } from '../utils/scheduleTime'
 
 const seoulClockFormatter = new Intl.DateTimeFormat('ko-KR', {
   timeZone: 'Asia/Seoul',
@@ -8,16 +8,72 @@ const seoulClockFormatter = new Intl.DateTimeFormat('ko-KR', {
   hour12: false,
 })
 
+const channelTheme = {
+  SK스토아: { accent: '#ff2855', shortLabel: 'SK' },
+  신세계쇼핑: { accent: '#ffc928', shortLabel: 'SSG' },
+  KT알파쇼핑: { accent: '#1497ff', shortLabel: 'KT' },
+}
+
 function getCurrentClock() {
   const parts = Object.fromEntries(seoulClockFormatter.formatToParts(new Date()).map((part) => [part.type, part.value]))
   const hour = String(Number(parts.hour) % 24).padStart(2, '0')
   return `${hour}:${parts.minute}`
 }
 
-export function ScheduleStrip({ label, schedule, displayFilter }) {
+function formatMoneyMillion(value) {
+  return `${((value || 0) / 1_000_000).toFixed(1)}`
+}
+
+function formatNumber(value) {
+  return Math.round(value || 0).toLocaleString()
+}
+
+function getDisplayName(product) {
+  return (product.productName || product.productId || '').replace(/^\[[^\]]+\]/, '').trim()
+}
+
+function CurrentProductTable({ inventory, nowAt, theme }) {
+  const currentAt = inventory.collectedAt || nowAt
+  const products = [...(inventory.products || [])]
+    .filter((product) => product.broadcastStartAt <= currentAt && product.broadcastEndAt >= currentAt)
+    .sort((a, b) => (b.estimatedRevenue || 0) - (a.estimatedRevenue || 0))
+    .slice(0, 5)
+
+  return (
+    <aside className="liveProductPanel" aria-label="현재 방송 상품별 주문금액">
+      <header>
+        <span className="liveDot" />
+        <strong>현재 방송 코드별 주문금액/건수</strong>
+      </header>
+      <div className="liveProductHead">
+        <span>코드</span>
+        <span>상품명</span>
+        <span>주문금액(백만원)</span>
+        <span>주문건수</span>
+      </div>
+      <div className="liveProductRows">
+        {products.map((product) => (
+          <a className="liveProductRow" href={product.url || undefined} key={product.productId} target="_blank">
+            <span>{product.productId}</span>
+            <strong>{getDisplayName(product)}</strong>
+            <b>{formatMoneyMillion(product.estimatedRevenue)}</b>
+            <em>{formatNumber(product.estimatedSold)}</em>
+          </a>
+        ))}
+        {!products.length ? <div className="liveProductEmpty">현재 방송 상품 수집 대기 중</div> : null}
+      </div>
+      <span className="panelGlow" style={{ background: theme.accent }} />
+    </aside>
+  )
+}
+
+export function ScheduleStrip({ label, schedule, displayFilter, inventory }) {
   const railRef = useRef(null)
+  const dragRef = useRef({ active: false, moved: false, left: 0, x: 0 })
   const [now, setNow] = useState(getCurrentClock)
+  const [nowAt, setNowAt] = useState(() => Date.now())
   const debugSchedule = label === '신세계쇼핑'
+  const theme = channelTheme[label] || { accent: '#38bdf8', shortLabel: label }
   const currentMinutes = getMinuteValue(now)
   const displayItems = useMemo(
     () => (displayFilter ? schedule.items.filter(displayFilter) : schedule.items),
@@ -38,6 +94,7 @@ export function ScheduleStrip({ label, schedule, displayFilter }) {
   useEffect(() => {
     const timer = setInterval(() => {
       setNow(getCurrentClock())
+      setNowAt(Date.now())
     }, 30 * 1000)
 
     return () => clearInterval(timer)
@@ -97,18 +154,62 @@ export function ScheduleStrip({ label, schedule, displayFilter }) {
     })
   }, [currentMinutes, debugSchedule, displayItems.length, groupStatuses, groups, label, now, schedule, targetIndex])
 
+  function handleRailPointerDown(event) {
+    if (event.button !== 0) return
+
+    const rail = railRef.current
+    if (!rail) return
+
+    dragRef.current = {
+      active: true,
+      moved: false,
+      left: rail.scrollLeft,
+      x: event.clientX,
+    }
+    rail.classList.add('isDragging')
+    rail.setPointerCapture(event.pointerId)
+  }
+
+  function handleRailPointerMove(event) {
+    const rail = railRef.current
+    const drag = dragRef.current
+    if (!rail || !drag.active) return
+
+    const distance = event.clientX - drag.x
+    if (Math.abs(distance) > 4) drag.moved = true
+    rail.scrollLeft = drag.left - distance
+  }
+
+  function handleRailPointerUp(event) {
+    const rail = railRef.current
+    if (!rail) return
+
+    dragRef.current.active = false
+    window.setTimeout(() => {
+      dragRef.current.moved = false
+    }, 0)
+    rail.classList.remove('isDragging')
+    if (rail.hasPointerCapture(event.pointerId)) rail.releasePointerCapture(event.pointerId)
+  }
+
+  function handleProductClick(event) {
+    if (dragRef.current.moved) event.preventDefault()
+  }
+
   return (
-    <section className="scheduleStrip" aria-label={`${label} 편성표`}>
+    <section className="scheduleStrip" aria-label={`${label} 편성표`} style={{ '--channel-accent': theme.accent }}>
       <div className="stripMeta">
-        <span className="channel">{label}</span>
-        <span className="now">{now}</span>
-        {schedule.loadedAt ? <span className="loadedAt">{formatLoadedAt(schedule.loadedAt)}</span> : null}
-        <span className="cacheBadge">{schedule.fromCache ? schedule.cacheType || 'cache' : 'remote'}</span>
-        <span className="loadedAt">수집 {schedule.remoteFetchCount || 0}회</span>
-        {schedule.nextRefreshAt ? <span className="loadedAt">다음 {formatLoadedAt(schedule.nextRefreshAt)}</span> : null}
+        <span className="channel">{theme.shortLabel}</span>
       </div>
 
-      <div className="scheduleRail" ref={railRef}>
+      <div
+        className="scheduleRail"
+        ref={railRef}
+        onPointerDown={handleRailPointerDown}
+        onPointerMove={handleRailPointerMove}
+        onPointerUp={handleRailPointerUp}
+        onPointerCancel={handleRailPointerUp}
+      >
         {groups.map((group, index) => {
           const status = groupStatuses[index]
 
@@ -127,7 +228,7 @@ export function ScheduleStrip({ label, schedule, displayFilter }) {
                 {group.items.map((item) => {
                   const meta = [item.brand, item.price].filter(Boolean).join(' · ')
                   return (
-                    <a className="productRow" href={item.url || undefined} key={item.id} target="_blank">
+                    <a className="productRow" href={item.url || undefined} key={item.id} onClick={handleProductClick} target="_blank">
                       {item.imageUrl ? (
                         <img className="thumb" src={item.imageUrl} alt="" loading="lazy" />
                       ) : (
@@ -146,6 +247,7 @@ export function ScheduleStrip({ label, schedule, displayFilter }) {
         })}
         {!groups.length ? <div className="emptyStrip">{schedule.error || '편성표를 불러오는 중입니다.'}</div> : null}
       </div>
+      <CurrentProductTable inventory={inventory} nowAt={nowAt} theme={theme} />
     </section>
   )
 }

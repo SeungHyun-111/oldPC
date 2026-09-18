@@ -7,7 +7,7 @@ const emptyInventory = {
   products: [],
   totals: { estimatedSold: 0, estimatedRevenue: 0, soldDelta: 0, currentStock: 0 },
   collectedAt: null,
-  windowMinutes: 60,
+  windowMinutes: 120,
 }
 
 export function useChannelInventory(channel, broadcaster) {

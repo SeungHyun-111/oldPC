@@ -1,17 +1,34 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import {
+  Area,
+  CartesianGrid,
+  ComposedChart,
+  Line,
+  ReferenceLine,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts'
+
+const channelDefs = [
+  { inventoryLabel: 'K쇼핑', sourceKey: 'ktalpha', key: 'kt', chartLabel: 'KT 알파 쇼핑', shortLabel: 'KT', color: '#1497ff' },
+  { inventoryLabel: '신세계', sourceKey: 'shinsegae', key: 'ssg', chartLabel: 'SSG', shortLabel: 'SSG', color: '#ffc928' },
+  { inventoryLabel: 'SK', sourceKey: 'skstoa', key: 'sk', chartLabel: 'SK 스토아', shortLabel: 'SK', color: '#ff2855' },
+]
 
 const channelColors = {
-  SK: '#38bdf8',
-  신세계: '#fb923c',
-  K쇼핑: '#34d399',
-}
-
-function formatWon(value) {
-  return `${Math.round(value || 0).toLocaleString()}원`
+  SK: '#ff2855',
+  신세계: '#ffc928',
+  K쇼핑: '#1497ff',
 }
 
 function formatNumber(value) {
   return Math.round(value || 0).toLocaleString()
+}
+
+function formatKRW(value) {
+  return `${Math.round(Number(value) || 0).toLocaleString('ko-KR')}원`
 }
 
 function formatTime(value) {
@@ -19,14 +36,27 @@ function formatTime(value) {
   return new Date(value).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })
 }
 
-function getDisplayName(product) {
-  return (product.productName || product.productId || '').replace(/^\[[^\]]+\]/, '').trim()
+function getTimeLabel(value) {
+  return formatTime(value)
 }
 
-function makePath(points) {
-  if (!points.length) return ''
-  if (points.length === 1) return `M ${points[0].x} ${points[0].y} L ${points[0].x + 1} ${points[0].y}`
-  return points.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`).join(' ')
+function getChannelDef(label) {
+  return channelDefs.find((channel) => channel.inventoryLabel === label)
+}
+
+function getChannelDefBySource(sourceKey) {
+  return channelDefs.find((channel) => channel.sourceKey === sourceKey)
+}
+
+function getDeltaPoint(product, point, previous) {
+  const soldDelta = point.soldDelta ?? Math.max((point.estimatedSold || 0) - (previous?.estimatedSold || 0), 0)
+  const revenueDelta =
+    soldDelta * (product.price || 0) || Math.max((point.estimatedRevenue || 0) - (previous?.estimatedRevenue || 0), 0)
+
+  return {
+    soldDelta,
+    revenueDelta,
+  }
 }
 
 function normalizeProducts(inventories) {
@@ -40,178 +70,673 @@ function normalizeProducts(inventories) {
   )
 }
 
-function buildTotalSeries(products) {
-  const events = products
-    .flatMap((product) =>
-      (product.history || []).map((point) => ({
-        collectedAt: point.collectedAt,
-        productKey: product.rowId,
-        revenue: point.estimatedRevenue || 0,
-        sold: point.estimatedSold || 0,
-      })),
-    )
-    .filter((event) => event.collectedAt)
-    .sort((a, b) => a.collectedAt - b.collectedAt)
+function getProgramAtFromSchedule(item, latestAt) {
+  const [hour, minute] = String(item.startTime || '').split(':').map(Number)
+  if (!Number.isFinite(hour) || !Number.isFinite(minute) || !latestAt) return null
 
-  const latestByProduct = new Map()
-  const seriesByTime = new Map()
+  const date = new Date(latestAt)
+  date.setHours(hour, minute, 0, 0)
 
-  for (const event of events) {
-    latestByProduct.set(event.productKey, { revenue: event.revenue, sold: event.sold })
-    const totals = [...latestByProduct.values()].reduce(
-      (sum, product) => ({
-        revenue: sum.revenue + product.revenue,
-        sold: sum.sold + product.sold,
-      }),
-      { revenue: 0, sold: 0 },
-    )
-    seriesByTime.set(event.collectedAt, { collectedAt: event.collectedAt, ...totals })
-  }
+  const diff = date.getTime() - latestAt
+  if (diff > 12 * 60 * 60 * 1000) date.setDate(date.getDate() - 1)
+  if (diff < -12 * 60 * 60 * 1000) date.setDate(date.getDate() + 1)
 
-  return [...seriesByTime.values()].sort((a, b) => a.collectedAt - b.collectedAt)
+  return date.getTime()
 }
 
-function CombinedRevenueChart({ products, collectedAt }) {
-  const [tooltip, setTooltip] = useState(null)
-  const width = 970
-  const height = 320
-  const plot = {
-    left: 42,
-    top: 24,
-    width: 900,
-    height: 238,
+function buildProgramEvents(products, programItems, latestAt, windowStart, ensureRow) {
+  const productsById = new Map(products.map((product) => [String(product.productId), product]))
+  const seen = new Set()
+
+  return programItems
+    .map((item) => {
+      const channel = getChannelDefBySource(item.sourceKey)
+      if (!channel) return null
+
+      const matchedProduct = productsById.get(String(item.id)) || products.find((product) => product.url && product.url === item.url)
+      const programAt = matchedProduct?.broadcastStartAt || getProgramAtFromSchedule(item, latestAt)
+      if (!programAt || programAt < windowStart || programAt > latestAt) return null
+
+      const bucketAt = Math.floor(programAt / 60_000) * 60_000
+      const key = `${channel.key}-${bucketAt}-${item.id || item.title}`
+      if (seen.has(key)) return null
+      seen.add(key)
+      ensureRow(bucketAt)
+
+      return {
+        bucketAt,
+        time: getTimeLabel(bucketAt),
+        channel: channel.key,
+        channelName: channel.shortLabel,
+        name: item.title || matchedProduct?.productName || '',
+      }
+    })
+    .filter(Boolean)
+}
+
+function buildMinuteChart(products, collectedAt, programItems = []) {
+  const rows = new Map()
+  const latestAt = collectedAt || Math.max(0, ...products.flatMap((product) => (product.history || []).map((point) => point.collectedAt || 0)))
+  const windowStart = latestAt ? latestAt - 120 * 60 * 1000 : 0
+
+  function ensureRow(bucketAt) {
+    if (!rows.has(bucketAt)) {
+      rows.set(bucketAt, {
+        bucketAt,
+        time: getTimeLabel(bucketAt),
+        kt: null,
+        ssg: null,
+        sk: null,
+        ktCount: 0,
+        ssgCount: 0,
+        skCount: 0,
+      })
+    }
+    return rows.get(bucketAt)
   }
-  const tooltipWidth = 176
-  const tooltipHeight = 52
-  const series = useMemo(() => buildTotalSeries(products), [products])
-  const latestAt = collectedAt || series.at(-1)?.collectedAt || 0
-  const firstAt = series[0]?.collectedAt || latestAt - 10 * 60 * 1000
-  const chartStart = firstAt === latestAt ? latestAt - 10 * 60 * 1000 : firstAt
-  const chartEnd = latestAt
-  const maxValue = Math.max(1, ...series.map((point) => point.revenue)) * 1.12
-  const points = series.map((point) => ({
-    ...point,
-    x: plot.left + ((point.collectedAt - chartStart) / Math.max(chartEnd - chartStart, 1)) * plot.width,
-    y: plot.top + plot.height - (point.revenue / maxValue) * plot.height,
-  }))
-  const tickCount = 6
-  const timeTicks = Array.from(
-    { length: tickCount },
-    (_, index) => chartStart + (index / Math.max(tickCount - 1, 1)) * (chartEnd - chartStart),
-  )
+
+  for (const product of products) {
+    const channel = getChannelDef(product.channel)
+    if (!channel) continue
+
+    const history = [...(product.history || [])].sort((a, b) => (a.collectedAt || 0) - (b.collectedAt || 0))
+    for (const [index, point] of history.entries()) {
+      if (!point.collectedAt || point.collectedAt < windowStart) continue
+
+      const bucketAt = Math.floor(point.collectedAt / 60_000) * 60_000
+      const row = ensureRow(bucketAt)
+      const { soldDelta, revenueDelta } = getDeltaPoint(product, point, history[index - 1])
+      row[channel.key] = (row[channel.key] || 0) + revenueDelta
+      row[`${channel.key}Count`] += soldDelta
+    }
+
+  }
+
+  const programs = buildProgramEvents(products, programItems, latestAt, windowStart, ensureRow)
+  const data = [...rows.values()].sort((a, b) => a.bucketAt - b.bucketAt)
+  if (data.length) data.at(-1).time = '지금'
+
+  return {
+    data,
+    programs,
+  }
+}
+
+function NeonDot({ cx, cy, stroke }) {
+  if (cx == null || cy == null) return null
 
   return (
-    <div className="chartWrap">
-      <svg
-        className="revenueChart"
-        viewBox={`0 0 ${width} ${height}`}
-        preserveAspectRatio="none"
-        role="img"
-        aria-label="3사 총 주문금액 그래프"
-      >
-        {[0, 1, 2, 3, 4].map((line) => {
-          const y = plot.top + (plot.height / 4) * line
-          const value = maxValue - (maxValue / 4) * line
-          return (
-            <g key={line}>
-              <line className="gridLine" x1={plot.left} x2={plot.left + plot.width} y1={y} y2={y} />
-              <text className="axisText" x={plot.left - 8} y={y + 3} textAnchor="end">
-                {Math.round(value / 10000).toLocaleString()}만
-              </text>
-            </g>
-          )
-        })}
-        {timeTicks.map((tick) => {
-          const x = plot.left + ((tick - chartStart) / Math.max(chartEnd - chartStart, 1)) * plot.width
-          return (
-            <g key={tick}>
-              <line className="gridLine vertical" x1={x} x2={x} y1={plot.top} y2={plot.top + plot.height} />
-              <text className="tickText" x={x} y={plot.top + plot.height + 24} textAnchor="middle">
-                {formatTime(tick)}
-              </text>
-            </g>
-          )
-        })}
-        <path className="totalRevenueLine" d={makePath(points)} />
-        {points.map((point) => (
-          <circle
-            className="revenueDot"
-            cx={point.x}
-            cy={point.y}
-            r="4"
-            fill="#facc15"
-            key={point.collectedAt}
-            onMouseEnter={() => {
-              const tooltipX = Math.min(width - tooltipWidth - 8, Math.max(8, point.x + 12))
-              const tooltipY = Math.min(height - tooltipHeight - 8, Math.max(8, point.y - tooltipHeight - 10))
-              setTooltip({
-                x: tooltipX,
-                y: tooltipY,
-                time: formatTime(point.collectedAt),
-                amount: point.revenue,
-                sold: point.sold,
-              })
-            }}
-            onMouseLeave={() => setTooltip(null)}
-          />
-        ))}
-        {tooltip ? (
-          <g className="chartTooltip">
-            <rect x={tooltip.x} y={tooltip.y} width={tooltipWidth} height={tooltipHeight} rx="6" />
-            <text x={tooltip.x + 10} y={tooltip.y + 18}>{tooltip.time}</text>
-            <text x={tooltip.x + 10} y={tooltip.y + 35}>주문 {formatNumber(tooltip.sold)}건</text>
-            <text x={tooltip.x + 10} y={tooltip.y + 49}>{formatWon(tooltip.amount)}</text>
-          </g>
-        ) : null}
-      </svg>
-      {!series.length ? <div className="emptyPanel">매출 수집 데이터 대기 중</div> : null}
+    <g className="neon-dot">
+      <circle cx={cx} cy={cy} r={8} fill={stroke} opacity={0.16} />
+      <circle cx={cx} cy={cy} r={4} fill={stroke} style={{ filter: `drop-shadow(0 0 5px ${stroke})` }} />
+    </g>
+  )
+}
+
+function ActiveNeonDot({ cx, cy, stroke }) {
+  if (cx == null || cy == null) return null
+
+  return (
+    <g>
+      <circle cx={cx} cy={cy} r={12} fill={stroke} opacity={0.2} />
+      <circle cx={cx} cy={cy} r={6.5} fill={stroke} stroke="#fff" strokeWidth={1.5} />
+    </g>
+  )
+}
+
+function getProgramLabelLines(name) {
+  const trimmedName = name.length > 36 ? `${name.slice(0, 35)}…` : name
+  return trimmedName.length > 18 ? [trimmedName.slice(0, 18), trimmedName.slice(18)] : [trimmedName]
+}
+
+function ProgramLabelOverlay({ program }) {
+  const channelDef = channelDefs.find((entry) => entry.key === program.channel)
+  if (!channelDef) return null
+
+  const lines = program.lines || getProgramLabelLines(program.name)
+
+  return (
+    <div
+      className="programLabel"
+      style={{
+        '--program-color': channelDef.color,
+        left: `${program.x}px`,
+        top: `${program.y}px`,
+      }}
+    >
+      <strong>
+        {channelDef.shortLabel}
+      </strong>
+      <span>{program.time}</span>
+      {lines.map((line, index) => (
+        <em key={`${line}-${index}`}>{line}</em>
+      ))}
     </div>
   )
 }
 
-export function CombinedRevenueDashboard({ inventories }) {
+function CustomTooltip({ active, payload, label }) {
+  if (!active || !payload?.length) return null
+
+  const values = payload.filter((item) => channelDefs.some((channel) => channel.key === item.dataKey))
+  const timeLabel = payload[0]?.payload?.time === '지금' ? '지금' : formatTime(label)
+
+  return (
+    <div className="live-tooltip">
+      <div className="tooltip-time">{timeLabel}</div>
+      {values.map((item) => {
+        const channel = channelDefs.find((entry) => entry.key === item.dataKey)
+        const count = item.payload?.[`${item.dataKey}Count`] || 0
+        if (!channel) return null
+
+        return (
+          <div className="tooltip-item" key={item.dataKey}>
+            <span className="tooltip-color" style={{ background: channel.color }} />
+            <span>{channel.shortLabel}</span>
+            <strong>{formatKRW(item.value)}</strong>
+            <em>{formatNumber(count)}건</em>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function Highlight({ point }) {
+  if (!point) return null
+
+  return (
+    <div className="highlight" style={{ left: `${point.x}px`, top: `${point.y}px`, '--highlight-color': point.color }}>
+      <span>{point.time}</span>
+      <strong>{point.shortLabel}</strong>
+      <b>{formatKRW(point.value)}</b>
+      <small>{formatNumber(point.count)}건</small>
+    </div>
+  )
+}
+
+function CurrentBadge({ point }) {
+  if (!point) return null
+
+  return (
+    <div
+      className="current-badge"
+      style={{
+        '--badge': point.color,
+        bottom: `${point.badgeBottom}%`,
+      }}
+    >
+      {formatKRW(point.value)}
+    </div>
+  )
+}
+
+function getTickStep(value) {
+  if (value <= 1_000_000) return 200_000
+  if (value <= 5_000_000) return 1_000_000
+  if (value <= 10_000_000) return 2_000_000
+  if (value <= 30_000_000) return 5_000_000
+  if (value <= 100_000_000) return 10_000_000
+  if (value <= 300_000_000) return 50_000_000
+  return 100_000_000
+}
+
+const yAxisWidth = 96
+const xAxisHeight = 28
+const overlayGap = 10
+const programLabelWidth = 216
+const highlightCard = { width: 206, height: 94 }
+const chartMargin = { top: 54, right: 112, bottom: 12, left: 12 }
+
+function getProgramLabelSize(program) {
+  const lines = getProgramLabelLines(program.name)
+  return {
+    width: programLabelWidth,
+    height: 34 + lines.length * 13,
+    lines,
+  }
+}
+
+function intersects(a, b, gap = overlayGap) {
+  return !(
+    a.x + a.width + gap < b.x ||
+    b.x + b.width + gap < a.x ||
+    a.y + a.height + gap < b.y ||
+    b.y + b.height + gap < a.y
+  )
+}
+
+function overlapArea(a, b) {
+  const x = Math.max(0, Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x))
+  const y = Math.max(0, Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y))
+  return x * y
+}
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value))
+}
+
+function getPlotBox(chartSize, chartMargin) {
+  return {
+    left: chartMargin.left + yAxisWidth,
+    right: Math.max(chartMargin.left + yAxisWidth + 1, chartSize.width - chartMargin.right),
+    top: chartMargin.top,
+    bottom: Math.max(chartMargin.top + 1, chartSize.height - chartMargin.bottom - xAxisHeight),
+  }
+}
+
+function getScales(data, axisMax, chartSize, chartMargin) {
+  const firstAt = data[0]?.bucketAt || 0
+  const lastAt = data.at(-1)?.bucketAt || firstAt + 1
+  const plot = getPlotBox(chartSize, chartMargin)
+
+  return {
+    plot,
+    x: (bucketAt) => plot.left + ((bucketAt - firstAt) / Math.max(lastAt - firstAt, 1)) * (plot.right - plot.left),
+    y: (value) => plot.bottom - (value / Math.max(axisMax, 1)) * (plot.bottom - plot.top),
+  }
+}
+
+function getNearestCardEdge(anchor, rect) {
+  const centerX = rect.x + rect.width / 2
+  const centerY = rect.y + rect.height / 2
+  const dx = anchor.x - centerX
+  const dy = anchor.y - centerY
+
+  if (Math.abs(dx / rect.width) > Math.abs(dy / rect.height)) {
+    return {
+      x: dx < 0 ? rect.x : rect.x + rect.width,
+      y: clamp(anchor.y, rect.y + 10, rect.y + rect.height - 10),
+    }
+  }
+
+  return {
+    x: clamp(anchor.x, rect.x + 10, rect.x + rect.width - 10),
+    y: dy < 0 ? rect.y : rect.y + rect.height,
+  }
+}
+
+function placeRect(candidates, occupied, bounds) {
+  let best = null
+
+  for (const candidate of candidates) {
+    const rect = {
+      ...candidate,
+      x: clamp(candidate.x, bounds.left, bounds.right - candidate.width),
+      y: clamp(candidate.y, bounds.top, bounds.bottom - candidate.height),
+    }
+    const score = occupied.reduce((sum, entry) => sum + overlapArea(rect, entry), 0)
+    if (!occupied.some((entry) => intersects(rect, entry))) return rect
+    if (!best || score < best.score) best = { ...rect, score }
+  }
+
+  return best
+}
+
+function layoutGraphOverlays({ programs, highlights, currentPoints, data, axisMax, chartSize, chartMargin }) {
+  if (!chartSize.width || !chartSize.height || !data.length) {
+    return { programs: [], highlights: [], connectors: [], programConnectors: [], currentPoints }
+  }
+
+  const scales = getScales(data, axisMax, chartSize, chartMargin)
+  const occupied = []
+  const bounds = {
+    left: 4,
+    top: 4,
+    right: chartSize.width - 4,
+    bottom: chartSize.height - 4,
+  }
+
+  for (const point of currentPoints) {
+    occupied.push({
+      x: chartSize.width - 116,
+      y: chartSize.height - ((point.badgeBottom / 100) * chartSize.height) - 14,
+      width: 108,
+      height: 28,
+    })
+  }
+
+  const placedPrograms = [...programs]
+    .sort((a, b) => a.bucketAt - b.bucketAt)
+    .map((program) => {
+      const anchorX = scales.x(program.bucketAt)
+      const size = getProgramLabelSize(program)
+      const candidates = []
+      const maxY = Math.min(scales.plot.top + 150, scales.plot.bottom - size.height)
+
+      for (const xOffset of [8, -size.width - 8, 18, -Math.round(size.width / 2), -size.width - 22, 32]) {
+        for (let y = 6; y <= maxY; y += 12) {
+          candidates.push({
+            x: anchorX + xOffset,
+            y,
+            width: size.width,
+            height: size.height,
+          })
+        }
+      }
+      if (!candidates.length) {
+        candidates.push({
+          x: anchorX + 8,
+          y: 6,
+          width: size.width,
+          height: size.height,
+        })
+      }
+
+      const rect = placeRect(candidates, occupied, bounds)
+      occupied.push(rect)
+      return {
+        ...program,
+        ...rect,
+        anchorX,
+        lines: size.lines,
+      }
+    })
+
+  const placedHighlights = highlights.map((point) => {
+    const row = data[point.index]
+    const anchor = {
+      x: scales.x(row?.bucketAt || 0),
+      y: scales.y(point.value),
+    }
+    const candidates = [
+      { x: anchor.x + 28, y: anchor.y - highlightCard.height - 26 },
+      { x: anchor.x - highlightCard.width - 28, y: anchor.y - highlightCard.height - 26 },
+      { x: anchor.x + 28, y: anchor.y + 24 },
+      { x: anchor.x - highlightCard.width - 28, y: anchor.y + 24 },
+      { x: anchor.x - highlightCard.width / 2, y: anchor.y - highlightCard.height - 34 },
+      { x: anchor.x - highlightCard.width / 2, y: anchor.y + 32 },
+    ].map((candidate) => ({ ...candidate, ...highlightCard }))
+    const rect = placeRect(candidates, occupied, bounds)
+    const edge = getNearestCardEdge(anchor, rect)
+    occupied.push(rect)
+
+    return {
+      ...point,
+      ...rect,
+      anchor,
+      edge,
+    }
+  })
+
+  return {
+    programs: placedPrograms,
+    highlights: placedHighlights,
+    programConnectors: placedPrograms.map((program) => ({
+      key: `${program.channel}-${program.bucketAt}-${program.name}`,
+      color: channelDefs.find((channel) => channel.key === program.channel)?.color || '#fff',
+      start: { x: program.anchorX, y: program.y + 8 },
+      end: getNearestCardEdge({ x: program.anchorX, y: program.y + 8 }, program),
+    })),
+    connectors: placedHighlights.map((point) => ({
+      key: point.key,
+      color: point.color,
+      start: point.anchor,
+      end: point.edge,
+    })),
+    currentPoints,
+  }
+}
+
+function avoidBadgeCollisions(points, axisMax) {
+  const sorted = points
+    .filter(Boolean)
+    .map((point) => ({
+      ...point,
+      badgeBottom: 8 + (point.value / Math.max(axisMax, 1)) * 78,
+    }))
+    .sort((a, b) => a.badgeBottom - b.badgeBottom)
+
+  const gap = 8
+  for (let index = 1; index < sorted.length; index += 1) {
+    if (sorted[index].badgeBottom - sorted[index - 1].badgeBottom < gap) {
+      sorted[index].badgeBottom = sorted[index - 1].badgeBottom + gap
+    }
+  }
+
+  for (let index = sorted.length - 1; index >= 0; index -= 1) {
+    sorted[index].badgeBottom = Math.min(92, sorted[index].badgeBottom)
+    if (index > 0 && sorted[index].badgeBottom - sorted[index - 1].badgeBottom < gap) {
+      sorted[index - 1].badgeBottom = sorted[index].badgeBottom - gap
+    }
+  }
+
+  return sorted.map((point) => ({
+    ...point,
+    badgeBottom: Math.max(8, Math.min(92, point.badgeBottom)),
+  }))
+}
+
+function CombinedRevenueChart({ products, collectedAt, programs }) {
+  const chartRef = useRef(null)
+  const [chartSize, setChartSize] = useState({ width: 0, height: 0 })
+  const { data, programs: chartPrograms } = useMemo(
+    () => buildMinuteChart(products, collectedAt, programs),
+    [collectedAt, products, programs],
+  )
+  const rawMaxValue = Math.max(1, ...data.flatMap((row) => channelDefs.map((channel) => row[channel.key] || 0)))
+  const tickStep = getTickStep(rawMaxValue)
+  const axisMax = Math.max(tickStep, Math.ceil((rawMaxValue * 1.08) / tickStep) * tickStep)
+  const ticks = Array.from({ length: Math.floor(axisMax / tickStep) + 1 }, (_, index) => index * tickStep)
+  const lastRow = data.at(-1)
+  const currentPoints = avoidBadgeCollisions(
+    channelDefs.map((channel) =>
+      lastRow
+        ? {
+            ...channel,
+            value: lastRow[channel.key] || 0,
+          }
+        : null,
+    ),
+    axisMax,
+  )
+  const highlights = channelDefs
+    .map((channel) => {
+      const peak = data.reduce(
+        (best, row, index) => {
+          const value = row[channel.key] || 0
+          return value > best.value
+            ? {
+                ...channel,
+                time: row.time,
+                value,
+                count: row[`${channel.key}Count`] || 0,
+                index,
+              }
+            : best
+        },
+        { value: 0 },
+      )
+      return peak.value > 0 ? peak : null
+    })
+    .filter(Boolean)
+  const overlayLayout = useMemo(
+    () =>
+      layoutGraphOverlays({
+        programs: chartPrograms,
+        highlights,
+        currentPoints,
+        data,
+        axisMax,
+        chartSize,
+        chartMargin,
+      }),
+    [axisMax, chartPrograms, chartSize, currentPoints, data, highlights],
+  )
+
+  useEffect(() => {
+    if (!chartRef.current) return undefined
+
+    const observer = new ResizeObserver(([entry]) => {
+      setChartSize({
+        width: entry.contentRect.width,
+        height: entry.contentRect.height,
+      })
+    })
+    observer.observe(chartRef.current)
+
+    return () => observer.disconnect()
+  }, [])
+
+  return (
+    <section className="live-order-chart" aria-label="분당 주문금액 그래프">
+      <div className="chart-top">
+        <h2>분당 주문금액</h2>
+        <div className="legend">
+          {channelDefs.map((channel) => (
+            <span key={channel.key}>
+              <i style={{ background: channel.color }} />
+              {channel.chartLabel}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      <div className="chart-wrapper" ref={chartRef}>
+        <svg className="overlayConnectors" width="100%" height="100%">
+          {overlayLayout.programConnectors.map((connector) => (
+            <path
+              d={`M ${connector.start.x} ${connector.start.y} L ${(connector.start.x + connector.end.x) / 2} ${connector.start.y} L ${connector.end.x} ${connector.end.y}`}
+              key={connector.key}
+              stroke={connector.color}
+              opacity="0.58"
+            />
+          ))}
+          {overlayLayout.connectors.map((connector) => (
+            <g key={connector.key}>
+              <path
+                d={`M ${connector.start.x} ${connector.start.y} L ${(connector.start.x + connector.end.x) / 2} ${connector.start.y} L ${connector.end.x} ${connector.end.y}`}
+                stroke={connector.color}
+              />
+              <circle cx={connector.start.x} cy={connector.start.y} r="12" fill={connector.color} opacity="0.16" />
+              <circle cx={connector.start.x} cy={connector.start.y} r="6" fill={connector.color} stroke="#fff" strokeWidth="1.5" />
+              <circle cx={connector.end.x} cy={connector.end.y} r="3" fill={connector.color} />
+            </g>
+          ))}
+        </svg>
+        <div className="programLabelLayer">
+          {overlayLayout.programs.map((program, index) => (
+            <ProgramLabelOverlay key={`${program.channel}-${program.bucketAt}-${index}`} program={program} />
+          ))}
+        </div>
+        {overlayLayout.highlights.map((point) => (
+          <Highlight key={point.key} point={point} />
+        ))}
+
+        <ResponsiveContainer width="100%" height="100%">
+          <ComposedChart data={data} margin={chartMargin}>
+            <defs>
+              {channelDefs.map((channel) => (
+                <linearGradient id={`${channel.key}Area`} x1="0" x2="0" y1="0" y2="1" key={channel.key}>
+                  <stop offset="0%" stopColor={channel.color} stopOpacity={0.48} />
+                  <stop offset="52%" stopColor={channel.color} stopOpacity={0.2} />
+                  <stop offset="100%" stopColor={channel.color} stopOpacity={0} />
+                </linearGradient>
+              ))}
+              {channelDefs.map((channel) => (
+                <filter id={`${channel.key}Glow`} x="-50%" y="-50%" width="200%" height="200%" key={`${channel.key}Glow`}>
+                  <feGaussianBlur stdDeviation="3" result="blur" />
+                  <feMerge>
+                    <feMergeNode in="blur" />
+                    <feMergeNode in="SourceGraphic" />
+                  </feMerge>
+                </filter>
+              ))}
+            </defs>
+
+            <CartesianGrid stroke="rgba(50,105,145,.12)" strokeWidth={1} vertical horizontal />
+            <XAxis
+              dataKey="bucketAt"
+              type="number"
+              domain={['dataMin', 'dataMax']}
+              interval={Math.max(1, Math.floor(data.length / 10))}
+              tickFormatter={formatTime}
+              tick={{ fill: '#91a5bd', fontSize: 11 }}
+              axisLine={{ stroke: '#35526d' }}
+              tickLine={false}
+            />
+            <YAxis
+              domain={[0, axisMax]}
+              ticks={ticks}
+              width={96}
+              tickFormatter={formatKRW}
+              tick={{ fill: '#91a5bd', fontSize: 11 }}
+              axisLine={false}
+              tickLine={false}
+            />
+            <Tooltip
+              content={<CustomTooltip />}
+              cursor={{ stroke: 'rgba(255,255,255,.3)', strokeWidth: 1, strokeDasharray: '4 5' }}
+            />
+
+            {channelDefs.map((channel) => (
+              <Area
+                type="monotone"
+                dataKey={channel.key}
+                stroke="none"
+                fill={`url(#${channel.key}Area)`}
+                connectNulls
+                isAnimationActive={false}
+                key={`${channel.key}AreaLayer`}
+              />
+            ))}
+
+            {chartPrograms.map((program, index) => (
+              <ReferenceLine
+                key={`${program.channel}-${program.time}-${index}`}
+                x={program.bucketAt}
+                stroke={channelDefs.find((channel) => channel.key === program.channel)?.color}
+                strokeWidth={1}
+                strokeDasharray="5 5"
+                strokeOpacity={0.78}
+              />
+            ))}
+
+            {data.length ? (
+              <ReferenceLine x={lastRow.bucketAt} stroke="#e5e7eb" strokeWidth={1.3} strokeDasharray="5 5" strokeOpacity={0.82} />
+            ) : null}
+
+            {channelDefs.map((channel) => (
+              <Line
+                type="monotone"
+                dataKey={channel.key}
+                stroke={channel.color}
+                strokeWidth={2.8}
+                dot={<NeonDot />}
+                activeDot={<ActiveNeonDot />}
+                filter={`url(#${channel.key}Glow)`}
+                connectNulls
+                isAnimationActive
+                animationDuration={700}
+                key={`${channel.key}Line`}
+              />
+            ))}
+
+          </ComposedChart>
+        </ResponsiveContainer>
+
+        <div className="current-values">
+          {currentPoints
+            .sort((a, b) => b.value - a.value)
+            .map((point) => (
+              <CurrentBadge key={point.key} point={point} />
+            ))}
+        </div>
+
+        {!data.length ? <div className="emptyPanel">매출 수집 데이터 대기 중</div> : null}
+      </div>
+    </section>
+  )
+}
+
+export function CombinedRevenueDashboard({ inventories, programs }) {
   const products = useMemo(() => normalizeProducts(inventories), [inventories])
   const latestCollectedAt = Math.max(0, ...inventories.map(({ inventory }) => inventory.collectedAt || 0))
-  const totals = products.reduce(
-    (sum, product) => ({
-      estimatedSold: sum.estimatedSold + (product.estimatedSold || 0),
-      estimatedRevenue: sum.estimatedRevenue + (product.estimatedRevenue || 0),
-      soldDelta: sum.soldDelta + (product.soldDelta || 0),
-    }),
-    { estimatedSold: 0, estimatedRevenue: 0, soldDelta: 0 },
-  )
-  const sortedProducts = [...products].sort((a, b) => (b.estimatedRevenue || 0) - (a.estimatedRevenue || 0))
 
   return (
     <section className="dashboardGrid combinedDashboard" aria-label="3사 통합 실시간 현황">
-      <section className="panel largePanel revenuePanel" aria-label="3사 총 주문금액">
-        <div className="panelHead">
-          <span>3사 총 주문금액</span>
-          <strong>{formatWon(totals.estimatedRevenue)}</strong>
-        </div>
-        <div className="metricRow">
-          <span>총 주문수량 {formatNumber(totals.estimatedSold)}</span>
-          <span>직전 수집 주문 {formatNumber(totals.soldDelta)}</span>
-          <span>수집 {formatTime(latestCollectedAt)}</span>
-        </div>
-        <CombinedRevenueChart products={products} collectedAt={latestCollectedAt} />
-      </section>
-
-      <section className="panel productMetrics combinedProducts" aria-label="3사 상품별 주문 현황">
-        {sortedProducts.map((product) => (
-          <article className="metricItem" key={product.rowId}>
-            <span className="metricColor" style={{ background: product.channelColor }} />
-            {product.imageUrl ? <img src={product.imageUrl} alt="" /> : <span className="metricThumb" />}
-            <div>
-              <strong>{getDisplayName(product)}</strong>
-              <span>
-                {product.channel} / 주문 {formatNumber(product.estimatedSold)}건 / {product.timeRange}
-              </span>
-            </div>
-            <em>{formatWon(product.estimatedRevenue)}</em>
-          </article>
-        ))}
-        {!sortedProducts.length ? <div className="emptyPanel">3사 현재 방송 상품 수집 대기 중</div> : null}
+      <section className="revenuePanel" aria-label="3사 수집주기별 주문금액">
+        <CombinedRevenueChart products={products} collectedAt={latestCollectedAt} programs={programs} />
       </section>
     </section>
   )

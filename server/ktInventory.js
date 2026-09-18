@@ -1,7 +1,7 @@
 import https from 'node:https'
 
 const BASE_URL = 'https://www.kshop.co.kr'
-const maxSnapshots = 60
+const maxSnapshots = 120
 const detailState = new Map()
 const windowMs = maxSnapshots * 60 * 1000
 const endBufferMs = 60 * 1000

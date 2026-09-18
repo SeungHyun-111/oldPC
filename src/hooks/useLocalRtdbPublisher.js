@@ -5,6 +5,7 @@ import { scheduleSources } from '../sources/scheduleSources'
 
 const apiBaseUrl = import.meta.env.VITE_OLDPC_API_BASE_URL || 'http://127.0.0.1:4174'
 const publishIntervalMs = Number(import.meta.env.VITE_OLDPC_PUBLISH_INTERVAL_MS || 60_000)
+const historyWindowMs = 120 * 60 * 1000
 const endBufferMs = 60 * 1000
 const inventorySources = [
   { key: 'skstoa', endpoint: '/api/skstoa/inventory' },
@@ -28,6 +29,10 @@ function getHistory(history) {
   return history || []
 }
 
+function trimHistory(history, collectedAt) {
+  return getHistory(history).filter((point) => point.collectedAt >= collectedAt - historyWindowMs).slice(-120)
+}
+
 function mergeInventoryProduct(nextProduct, previousProduct, collectedAt) {
   if (!previousProduct) return nextProduct
 
@@ -41,7 +46,7 @@ function mergeInventoryProduct(nextProduct, previousProduct, collectedAt) {
       soldDelta: 0,
       estimatedSold: previousProduct.estimatedSold || 0,
       estimatedRevenue: previousProduct.estimatedRevenue || 0,
-      history: getHistory(previousProduct.history),
+      history: trimHistory(previousProduct.history, collectedAt),
       collectedAt,
     }
   }
@@ -52,7 +57,7 @@ function mergeInventoryProduct(nextProduct, previousProduct, collectedAt) {
   const soldDelta = Math.max(previousStock - currentStock, 0)
   const estimatedSold = (previousProduct.estimatedSold || 0) + soldDelta
   const estimatedRevenue = estimatedSold * price
-  const history = getHistory(previousProduct.history)
+  const history = trimHistory(previousProduct.history, collectedAt)
 
   history.push({
     collectedAt,
@@ -73,7 +78,7 @@ function mergeInventoryProduct(nextProduct, previousProduct, collectedAt) {
     soldDelta,
     estimatedSold,
     estimatedRevenue,
-    history,
+    history: trimHistory(history, collectedAt),
     collectedAt,
   }
 }
@@ -88,7 +93,7 @@ function mergeInventoryPayload(nextInventory, previousInventory) {
     : (previousInventory?.products || [])
         .map((product) => ({
           ...product,
-          history: getHistory(product.history),
+          history: trimHistory(product.history, collectedAt),
         }))
         .filter((product) => product.history.length || product.broadcastEndAt >= collectedAt)
 

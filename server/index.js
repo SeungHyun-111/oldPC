@@ -46,7 +46,7 @@ async function handleSkstoaInventory(request, response) {
     sendJson(request, response, 502, {
       broadcaster: 'SK',
       collectedAt: Date.now(),
-      windowMinutes: 60,
+      windowMinutes: 120,
       products: [],
       totals: { estimatedSold: 0, estimatedRevenue: 0, soldDelta: 0, currentStock: 0 },
       error: error.message,
@@ -63,7 +63,7 @@ async function handleShinsegaeInventory(request, response) {
     sendJson(request, response, 502, {
       broadcaster: '신세계',
       collectedAt: Date.now(),
-      windowMinutes: 60,
+      windowMinutes: 120,
       products: [],
       totals: { estimatedSold: 0, estimatedRevenue: 0, soldDelta: 0, currentStock: 0 },
       error: error.message,
@@ -80,7 +80,7 @@ async function handleKtInventory(request, response) {
     sendJson(request, response, 502, {
       broadcaster: 'K쇼핑',
       collectedAt: Date.now(),
-      windowMinutes: 60,
+      windowMinutes: 120,
       products: [],
       totals: { estimatedSold: 0, estimatedRevenue: 0, soldDelta: 0, currentStock: 0 },
       error: error.message,
