@@ -36,8 +36,14 @@ function formatTime(value) {
   return new Date(value).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })
 }
 
+function formatHourMinute(value) {
+  if (!value) return '-'
+  const date = new Date(value)
+  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+}
+
 function getTimeLabel(value) {
-  return formatTime(value)
+  return formatHourMinute(value)
 }
 
 function getChannelDef(label) {
@@ -337,6 +343,23 @@ function getScales(data, axisMax, chartSize, chartMargin) {
   }
 }
 
+function getTenMinuteTicks(data) {
+  if (!data.length) return []
+
+  const start = Math.ceil(data[0].bucketAt / 600_000) * 600_000
+  const end = data.at(-1).bucketAt
+  const ticks = []
+
+  for (let tick = start; tick <= end; tick += 600_000) {
+    ticks.push(tick)
+  }
+
+  if (!ticks.includes(data[0].bucketAt)) ticks.unshift(data[0].bucketAt)
+  if (!ticks.includes(end)) ticks.push(end)
+
+  return ticks
+}
+
 function getNearestCardEdge(anchor, rect) {
   const centerX = rect.x + rect.width / 2
   const centerY = rect.y + rect.height / 2
@@ -518,6 +541,7 @@ function CombinedRevenueChart({ products, collectedAt, programs }) {
   const tickStep = getTickStep(rawMaxValue)
   const axisMax = Math.max(tickStep, Math.ceil((rawMaxValue * 1.08) / tickStep) * tickStep)
   const ticks = Array.from({ length: Math.floor(axisMax / tickStep) + 1 }, (_, index) => index * tickStep)
+  const timeTicks = useMemo(() => getTenMinuteTicks(data), [data])
   const lastRow = data.at(-1)
   const currentPoints = avoidBadgeCollisions(
     channelDefs.map((channel) =>
@@ -649,8 +673,8 @@ function CombinedRevenueChart({ products, collectedAt, programs }) {
               dataKey="bucketAt"
               type="number"
               domain={['dataMin', 'dataMax']}
-              interval={Math.max(1, Math.floor(data.length / 10))}
-              tickFormatter={formatTime}
+              ticks={timeTicks}
+              tickFormatter={formatHourMinute}
               tick={{ fill: '#91a5bd', fontSize: 11 }}
               axisLine={{ stroke: '#35526d' }}
               tickLine={false}
