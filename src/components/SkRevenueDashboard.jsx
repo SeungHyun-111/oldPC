@@ -460,7 +460,7 @@ function placeRect(candidates, occupied, bounds, avoid = []) {
     const hardBlocked = occupied.some((entry) => intersects(rect, entry))
     const avoidBlocked = avoid.some((entry) => intersects(rect, entry, 4))
     const distanceScore = candidate.distanceScore || 0
-    const score = (hardBlocked ? 1_000_000_000 : 0) + (avoidBlocked ? 10_000_000 : 0) + hardScore * 100 + avoidScore * 20 + distanceScore
+    const score = (hardBlocked ? 1_000_000_000 : 0) + (avoidBlocked ? 4_000_000 : 0) + hardScore * 80 + avoidScore * 12 + distanceScore
     if (!hardBlocked && !avoidBlocked && !avoidScore) return rect
     if (!best || score < best.score) best = { ...rect, score }
   }
@@ -515,8 +515,8 @@ function getLineAvoidRects(data, scales) {
 
 function getHighlightCandidates(anchor, bounds) {
   const positions = []
-  const xOffsets = [34, 72, 112]
-  const yOffsets = [28, 58, 90]
+  const xOffsets = [14, 28, 46, 68, 94]
+  const yOffsets = [12, 24, 40, 62, 88]
 
   for (const xOffset of xOffsets) {
     for (const yOffset of yOffsets) {
@@ -530,17 +530,19 @@ function getHighlightCandidates(anchor, bounds) {
   }
 
   positions.push(
-    { x: anchor.x - highlightCard.width / 2, y: anchor.y - highlightCard.height - 110 },
-    { x: anchor.x - highlightCard.width / 2, y: anchor.y + 96 },
-    { x: anchor.x + 132, y: anchor.y - highlightCard.height / 2 },
-    { x: anchor.x - highlightCard.width - 132, y: anchor.y - highlightCard.height / 2 },
+    { x: anchor.x - highlightCard.width / 2, y: anchor.y - highlightCard.height - 18 },
+    { x: anchor.x - highlightCard.width / 2, y: anchor.y + 18 },
+    { x: anchor.x + 18, y: anchor.y - highlightCard.height / 2 },
+    { x: anchor.x - highlightCard.width - 18, y: anchor.y - highlightCard.height / 2 },
   )
 
-  const gridStepX = 42
-  const gridStepY = 26
-  for (let y = bounds.top; y <= bounds.bottom - highlightCard.height; y += gridStepY) {
-    for (let x = bounds.left; x <= bounds.right - highlightCard.width; x += gridStepX) {
-      positions.push({ x, y })
+  for (const radius of [120, 170, 230]) {
+    for (let angle = -150; angle <= 180; angle += 15) {
+      const radians = (angle * Math.PI) / 180
+      positions.push({
+        x: anchor.x + Math.cos(radians) * radius - highlightCard.width / 2,
+        y: anchor.y + Math.sin(radians) * radius - highlightCard.height / 2,
+      })
     }
   }
 
@@ -548,7 +550,7 @@ function getHighlightCandidates(anchor, bounds) {
     .map((candidate) => ({
       ...candidate,
       ...highlightCard,
-      distanceScore: Math.hypot(candidate.x + highlightCard.width / 2 - anchor.x, candidate.y + highlightCard.height / 2 - anchor.y) * 0.7,
+      distanceScore: Math.hypot(candidate.x + highlightCard.width / 2 - anchor.x, candidate.y + highlightCard.height / 2 - anchor.y) * 6,
     }))
     .sort((a, b) => a.distanceScore - b.distanceScore)
 }
