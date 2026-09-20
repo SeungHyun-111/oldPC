@@ -41,6 +41,54 @@ function getProductSessionKey(product) {
   return `${product.productId || ''}-${product.broadcastStartAt || 0}`
 }
 
+function hasProgramHistory(product) {
+  const startAt = product?.broadcastStartAt || 0
+  const endAt = (product?.broadcastEndAt || 0) - endBufferMs
+  if (!startAt || !endAt) return false
+
+  return getHistory(product.history).some((point) => {
+    const pointAt = point.collectedAt || point.bucketAt || 0
+    return point.active && pointAt >= startAt && pointAt < endAt
+  })
+}
+
+function createProgramBaseline(nextProduct, collectedAt, cycleBucketAt) {
+  const price = nextProduct.price || 0
+  const currentStock = nextProduct.currentStock || nextProduct.totalStock || 0
+  const historyPoint = {
+    collectedAt,
+    bucketAt: cycleBucketAt,
+    active: true,
+    stock: currentStock,
+    soldDelta: 0,
+    revenueDelta: 0,
+    price,
+    estimatedSold: 0,
+    estimatedRevenue: 0,
+  }
+
+  return {
+    ...nextProduct,
+    price,
+    currentStock,
+    totalStock: nextProduct.totalStock ?? currentStock,
+    lastStock: currentStock,
+    initialStock: currentStock,
+    soldDelta: 0,
+    estimatedSold: 0,
+    estimatedRevenue: 0,
+    restockQuantity: 0,
+    history: normalizeHistory([historyPoint], collectedAt, cycleBucketAt),
+    collectedAt,
+    sampleOk: true,
+    lastSuccessAt: collectedAt,
+  }
+}
+
+function hasActiveSample(product) {
+  return product?.sampleOk === true || getHistory(product?.history).some((point) => point.active)
+}
+
 function normalizeHistory(history, collectedAt, cycleBucketAt) {
   const cutoffAt = getMinuteBucketAt(collectedAt - historyWindowMs)
   const byBucket = new Map()
@@ -64,12 +112,20 @@ function normalizeHistory(history, collectedAt, cycleBucketAt) {
 }
 
 function mergeInventoryProduct(nextProduct, previousProduct, collectedAt, cycleBucketAt) {
+  const nextHasActiveSample = hasActiveSample(nextProduct)
+
   if (!previousProduct) {
-    return {
-      ...nextProduct,
-      history: normalizeHistory(nextProduct.history, collectedAt, cycleBucketAt),
-      collectedAt,
-    }
+    return nextHasActiveSample
+      ? createProgramBaseline(nextProduct, collectedAt, cycleBucketAt)
+      : {
+          ...nextProduct,
+          history: normalizeHistory(nextProduct.history, collectedAt, cycleBucketAt),
+          collectedAt,
+        }
+  }
+
+  if (!hasProgramHistory(previousProduct) && nextHasActiveSample) {
+    return createProgramBaseline(nextProduct, collectedAt, cycleBucketAt)
   }
 
   const price = nextProduct.price || previousProduct.price || 0

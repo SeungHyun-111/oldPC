@@ -224,15 +224,19 @@ function updateStats(product, snapshot) {
   const collectedAt = Date.now()
   const stock = snapshot.totalStock
   const price = snapshot.price || product.price || 0
-  const delta = previous ? previous.lastStock - stock : 0
+  const hasPreviousProgramHistory = (previous?.history || []).some((point) => {
+    const pointAt = point.collectedAt || 0
+    return point.active && pointAt >= product.broadcastStartAt && pointAt < product.broadcastEndAt - endBufferMs
+  })
+  const delta = hasPreviousProgramHistory ? previous.lastStock - stock : 0
   const soldDelta = Math.max(delta, 0)
   const revenueDelta = soldDelta * price
   const restockDelta = Math.max(-delta, 0)
-  const estimatedSold = (previous?.estimatedSold || 0) + soldDelta
-  const estimatedRevenue = (previous?.estimatedRevenue || 0) + revenueDelta
-  const restockQuantity = (previous?.restockQuantity || 0) + restockDelta
+  const estimatedSold = (hasPreviousProgramHistory ? previous?.estimatedSold || 0 : 0) + soldDelta
+  const estimatedRevenue = (hasPreviousProgramHistory ? previous?.estimatedRevenue || 0 : 0) + revenueDelta
+  const restockQuantity = (hasPreviousProgramHistory ? previous?.restockQuantity || 0 : 0) + restockDelta
   const history = [
-    ...(previous?.history || []),
+    ...(hasPreviousProgramHistory ? previous?.history || [] : []),
     {
       collectedAt,
       sampleOk: true,
@@ -250,7 +254,7 @@ function updateStats(product, snapshot) {
     ...product,
     ...snapshot,
     currentStock: stock,
-    initialStock: previous?.initialStock ?? stock,
+    initialStock: hasPreviousProgramHistory ? previous?.initialStock ?? stock : stock,
     lastStock: stock,
     soldDelta,
     estimatedSold,
