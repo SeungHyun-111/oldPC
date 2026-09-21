@@ -4,6 +4,7 @@ import {
   CartesianGrid,
   ComposedChart,
   Line,
+  ReferenceArea,
   ReferenceLine,
   ResponsiveContainer,
   Tooltip,
@@ -854,6 +855,29 @@ function CombinedRevenueChart({ products, collectedAt, programs, nowAt }) {
             <Tooltip
               content={<CustomTooltip />}
               cursor={{ stroke: 'rgba(255,255,255,.3)', strokeWidth: 1, strokeDasharray: '4 5' }}
+            />
+
+            {axisMin < 0 ? (
+              <ReferenceArea
+                y1={axisMin}
+                y2={0}
+                fill="rgba(248, 113, 113, 0.12)"
+                strokeOpacity={0}
+                ifOverflow="visible"
+              />
+            ) : null}
+            <ReferenceLine
+              y={0}
+              stroke="#f8fafc"
+              strokeWidth={2.2}
+              strokeOpacity={0.92}
+              label={{
+                value: '0원',
+                position: 'insideLeft',
+                fill: '#e5e7eb',
+                fontSize: 12,
+                fontWeight: 700,
+              }}
             />
 
             {channelDefs.map((channel) => (
