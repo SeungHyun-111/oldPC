@@ -68,6 +68,14 @@ function getDeltaPoint(product, point, previous) {
   }
 }
 
+function isPointInProductProgram(product, bucketAt) {
+  const startAt = product.broadcastStartAt || 0
+  const endAt = product.broadcastEndAt || 0
+  if (!bucketAt || !startAt || !endAt) return false
+
+  return startAt <= bucketAt && bucketAt < endAt
+}
+
 function normalizeProducts(inventories) {
   return inventories.flatMap(({ label, inventory }) =>
     (inventory.products || []).map((product) => ({
@@ -164,6 +172,7 @@ function buildMinuteChart(products, collectedAt, programItems = [], nowAt = Date
     for (const [index, point] of history.entries()) {
       const pointBucketAt = point.bucketAt || (point.collectedAt ? Math.floor(point.collectedAt / 60_000) * 60_000 : 0)
       if (!pointBucketAt || pointBucketAt < windowStart) continue
+      if (!isPointInProductProgram(product, pointBucketAt)) continue
 
       const row = ensureRow(pointBucketAt)
       const { soldDelta, revenueDelta } = getDeltaPoint(product, point, history[index - 1])
@@ -239,7 +248,13 @@ function ProgramLabelOverlay({ program }) {
 function CustomTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null
 
-  const values = payload.filter((item) => channelDefs.some((channel) => channel.key === item.dataKey))
+  const valuesByChannel = new Map()
+  for (const item of payload) {
+    const channel = channelDefs.find((entry) => entry.key === item.dataKey)
+    if (!channel || item.payload?.bucketAt !== label) continue
+    valuesByChannel.set(channel.key, item)
+  }
+  const values = channelDefs.map((channel) => valuesByChannel.get(channel.key)).filter(Boolean)
   const timeLabel = payload[0]?.payload?.time === '지금' ? '지금' : formatTime(label)
 
   return (

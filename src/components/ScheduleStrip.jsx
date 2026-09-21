@@ -37,8 +37,14 @@ function getDisplayName(product) {
 }
 
 function getProductRuntimeStats(product) {
+  const startAt = product.broadcastStartAt || 0
+  const endAt = product.broadcastEndAt || 0
+
   return (product.history || []).reduce(
     (sum, point) => {
+      const pointAt = point.bucketAt || point.collectedAt || 0
+      if ((startAt && pointAt < startAt) || (endAt && pointAt >= endAt)) return sum
+
       const soldDelta = Math.max(point.soldDelta || 0, 0)
       return {
         revenue: sum.revenue + Math.max(point.revenueDelta ?? soldDelta * (point.price || product.price || 0), 0),
