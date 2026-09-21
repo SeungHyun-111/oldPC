@@ -153,17 +153,13 @@ function parseProduct(payload, fallback) {
   const stockFromOptions = options.reduce((sum, option) => sum + option.stock, 0)
   const totalStock = stockFromOptions || getUnitSummaryStock(unitList) || summaryStock || parseNumber(findFirstKeyValue(productModel, stockKeys))
   const name = productModel?.prdNm || findFirstKeyValue(productModel, ['productName', 'goodsName', 'itemName']) || fallback.productName
-  const price =
-    productModel?.lowestPrice ||
-    productModel?.promotion?.targetRvo?.slPc ||
-    productModel?.originalPrice ||
-    findFirstKeyValue(productModel, ['ecMktSlPc', 'ecSlPc', 'mcMktSlPc', 'mcSlPc', 'salePrice', 'goodsPrice'])
+  const price = productModel?.promotion?.targetRvo?.slPc
 
   return {
     broadcaster: 'K쇼핑',
     productId: fallback.productId,
     productName: String(name || fallback.productName || productId),
-    price: parseNumber(price) || fallback.price || 0,
+    price: parseNumber(price),
     totalStock,
     options: options.length ? options : [{ optionId: productId, optionName: '기본', stock: totalStock }],
   }

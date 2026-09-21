@@ -28,13 +28,7 @@ function normalizeImageUrl(url) {
 }
 
 function getProductPrice(product) {
-  return (
-    product?.priceSummary?.ecMktSlPc ||
-    product?.priceSummary?.ecSlPc ||
-    product?.priceSummary?.mcMktSlPc ||
-    product?.priceSummary?.mcSlPc ||
-    0
-  )
+  return product?.priceSummary?.ecSlPc || 0
 }
 
 export function normalizeKtSchedule(payload) {
