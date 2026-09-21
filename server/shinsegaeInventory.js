@@ -127,13 +127,16 @@ function parseDetailInfo(payload, fallback) {
   const stockFromOptions = options.reduce((sum, option) => sum + option.stock, 0)
   const totalStock = stockFromOptions || summaryStock || parseNumber(findFirstKeyValue(payload, 'briefOrderAbleCnt'))
   const name = findFirstKeyValue(payload, 'goodsName') || findFirstKeyValue(payload, 'itemName') || fallback.productName
-  const price = findFirstKeyValue(payload, 'salePrice') || findFirstKeyValue(payload, 'dcPrice') || findFirstKeyValue(payload, 'goodsPrice')
+  const salePrice = findFirstKeyValue(payload, 'salePrice')
+  const dcPrice = findFirstKeyValue(payload, 'dcPrice')
+  const goodsPrice = findFirstKeyValue(payload, 'goodsPrice')
+  const price = salePrice ?? dcPrice ?? goodsPrice
 
   return {
     broadcaster: '신세계',
     productId: fallback.productId,
     productName: String(name || fallback.productName || fallback.productId),
-    price: parseNumber(price) || fallback.price || 0,
+    price: parseNumber(price),
     totalStock,
     options: options.length ? options : [{ optionId: fallback.productId, optionName: '기본', stock: totalStock }],
   }
@@ -223,7 +226,7 @@ function updateStats(product, snapshot) {
   const previous = detailState.get(sessionKey)
   const collectedAt = Date.now()
   const stock = snapshot.totalStock
-  const price = snapshot.price || product.price || 0
+  const price = snapshot.price || 0
   const hasPreviousProgramHistory = (previous?.history || []).some((point) => {
     const pointAt = point.collectedAt || 0
     return point.active && pointAt >= product.broadcastStartAt && pointAt < product.broadcastEndAt - endBufferMs

@@ -53,12 +53,14 @@ function fetchText(url) {
 
 function parseSkDetail(html, fallback) {
   const selectedPrefix = `selectedOptions["${fallback.productId}"]["001"]`
+  const escapedSelectedPrefix = selectedPrefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   const selectedName = html.match(
-    new RegExp(`${selectedPrefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\.goodsName\\s*=\\s*"([^"]+)"`),
+    new RegExp(`${escapedSelectedPrefix}\\.goodsName\\s*=\\s*"([^"]+)"`),
   )?.[1]
   const selectedPrice = html.match(
-    new RegExp(`${selectedPrefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\.goodsPrice\\s*=\\s*"([^"]+)"`),
+    new RegExp(`${escapedSelectedPrefix}\\.goodsPrice\\s*=\\s*"?([\\d.,]+)"?`),
   )?.[1]
+  const goodsSalePrice = html.match(/var\s+goodsSalePrice\s*=\s*Number\("([^"]+)"\)/)?.[1]
 
   const options = []
   const blocks = html.split('goodsOptions.push(Object.create(null));').slice(1)
@@ -84,7 +86,7 @@ function parseSkDetail(html, fallback) {
     broadcaster: 'SK',
     productId: fallback.productId,
     productName: decodeUnicodeEscapes(selectedName) || fallback.productName || fallback.productId,
-    price: parseNumber(selectedPrice) || fallback.price || 0,
+    price: parseNumber(selectedPrice || goodsSalePrice),
     totalStock,
     options,
   }
@@ -158,7 +160,7 @@ function updateStats(product, snapshot) {
   const previous = detailState.get(sessionKey)
   const collectedAt = Date.now()
   const stock = snapshot.totalStock
-  const price = snapshot.price || product.price || 0
+  const price = snapshot.price || 0
   const hasPreviousProgramHistory = (previous?.history || []).some((point) => {
     const pointAt = point.collectedAt || 0
     return point.active && pointAt >= product.broadcastStartAt && pointAt < product.broadcastEndAt - endBufferMs

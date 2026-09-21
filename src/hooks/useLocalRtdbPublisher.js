@@ -41,6 +41,11 @@ function getProductSessionKey(product) {
   return `${product.productId || ''}-${product.broadcastStartAt || 0}`
 }
 
+function getInventoryPrice(nextProduct, previousProduct) {
+  if (nextProduct.broadcaster === 'SK' || previousProduct?.broadcaster === 'SK') return nextProduct.price || 0
+  return nextProduct.price || previousProduct?.price || 0
+}
+
 function hasProgramHistory(product) {
   const startAt = product?.broadcastStartAt || 0
   const endAt = (product?.broadcastEndAt || 0) - endBufferMs
@@ -128,7 +133,7 @@ function mergeInventoryProduct(nextProduct, previousProduct, collectedAt, cycleB
     return createProgramBaseline(nextProduct, collectedAt, cycleBucketAt)
   }
 
-  const price = nextProduct.price || previousProduct.price || 0
+  const price = getInventoryPrice(nextProduct, previousProduct)
 
   if (nextProduct.sampleOk === false) {
     return {
