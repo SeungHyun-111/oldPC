@@ -231,10 +231,10 @@ function updateStats(product, snapshot) {
     const pointAt = point.collectedAt || 0
     return point.active && pointAt >= product.broadcastStartAt && pointAt < product.broadcastEndAt - endBufferMs
   })
-  const delta = hasPreviousProgramHistory ? previous.lastStock - stock : 0
-  const soldDelta = delta
+  const rawStockDelta = hasPreviousProgramHistory ? previous.lastStock - stock : 0
+  const soldDelta = Math.max(rawStockDelta, 0)
   const revenueDelta = soldDelta * price
-  const restockDelta = Math.max(-delta, 0)
+  const restockDelta = Math.max(-rawStockDelta, 0)
   const estimatedSold = (hasPreviousProgramHistory ? previous?.estimatedSold || 0 : 0) + soldDelta
   const estimatedRevenue = (hasPreviousProgramHistory ? previous?.estimatedRevenue || 0 : 0) + revenueDelta
   const restockQuantity = (hasPreviousProgramHistory ? previous?.restockQuantity || 0 : 0) + restockDelta
@@ -245,6 +245,7 @@ function updateStats(product, snapshot) {
       sampleOk: true,
       active: true,
       stock,
+      rawStockDelta,
       soldDelta,
       revenueDelta,
       price,
@@ -260,6 +261,7 @@ function updateStats(product, snapshot) {
     currentStock: stock,
     initialStock: hasPreviousProgramHistory ? previous?.initialStock ?? stock : stock,
     lastStock: stock,
+    rawStockDelta,
     soldDelta,
     estimatedSold,
     estimatedRevenue,

@@ -57,10 +57,10 @@ function getChannelDefBySource(sourceKey) {
 
 function getDeltaPoint(product, point, previous) {
   const hasSoldDelta = point.soldDelta != null
-  const soldDelta = hasSoldDelta ? point.soldDelta || 0 : Math.max((point.estimatedSold || 0) - (previous?.estimatedSold || 0), 0)
-  const revenueDelta = point.revenueDelta ?? (hasSoldDelta
+  const soldDelta = hasSoldDelta ? Math.max(point.soldDelta || 0, 0) : Math.max((point.estimatedSold || 0) - (previous?.estimatedSold || 0), 0)
+  const revenueDelta = Math.max(point.revenueDelta ?? (hasSoldDelta
     ? soldDelta * (product.price || 0)
-    : Math.max((point.estimatedRevenue || 0) - (previous?.estimatedRevenue || 0), 0))
+    : Math.max((point.estimatedRevenue || 0) - (previous?.estimatedRevenue || 0), 0)), 0)
 
   return {
     soldDelta,

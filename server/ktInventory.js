@@ -146,6 +146,7 @@ function requestProduct(productId) {
 function parseProduct(payload, fallback) {
   const productId = getKtProductId(fallback.productId)
   const productModel = payload?.data?.productModel || payload?.productModel || payload?.data || payload
+  const targetRvo = productModel?.promotion?.targetRvo || {}
   const unitList = Array.isArray(productModel?.unitList) ? productModel.unitList : []
   const options = getUnitOptions(unitList).filter((option) => option.stock > 0)
   const allStocks = findAllStockItems(productModel)
@@ -153,13 +154,16 @@ function parseProduct(payload, fallback) {
   const stockFromOptions = options.reduce((sum, option) => sum + option.stock, 0)
   const totalStock = stockFromOptions || getUnitSummaryStock(unitList) || summaryStock || parseNumber(findFirstKeyValue(productModel, stockKeys))
   const name = productModel?.prdNm || findFirstKeyValue(productModel, ['productName', 'goodsName', 'itemName']) || fallback.productName
-  const price = productModel?.promotion?.targetRvo?.slPc
+  const originalPrice = parseNumber(targetRvo.originalPrice)
+  const slPc = parseNumber(targetRvo.slPc)
 
   return {
     broadcaster: 'K쇼핑',
     productId: fallback.productId,
     productName: String(name || fallback.productName || productId),
-    price: parseNumber(price),
+    originalPrice,
+    slPc,
+    price: slPc || originalPrice || 0,
     totalStock,
     options: options.length ? options : [{ optionId: productId, optionName: '기본', stock: totalStock }],
   }
@@ -218,7 +222,6 @@ function getWindowProducts(scheduleItems) {
       return {
         productId: item.id,
         productName: item.title || '',
-        price: parseNumber(item.price),
         imageUrl: item.imageUrl || '',
         url: item.url || `${BASE_URL}/display/product/${productId}`,
         timeRange: item.timeRange || '',
@@ -234,15 +237,15 @@ function updateStats(product, snapshot) {
   const previous = detailState.get(sessionKey)
   const collectedAt = Date.now()
   const stock = snapshot.totalStock
-  const price = snapshot.price || product.price || 0
+  const price = snapshot.price || 0
   const hasPreviousProgramHistory = (previous?.history || []).some((point) => {
     const pointAt = point.collectedAt || 0
     return point.active && pointAt >= product.broadcastStartAt && pointAt < product.broadcastEndAt - endBufferMs
   })
-  const delta = hasPreviousProgramHistory ? previous.lastStock - stock : 0
-  const soldDelta = delta
+  const rawStockDelta = hasPreviousProgramHistory ? previous.lastStock - stock : 0
+  const soldDelta = Math.max(rawStockDelta, 0)
   const revenueDelta = soldDelta * price
-  const restockDelta = Math.max(-delta, 0)
+  const restockDelta = Math.max(-rawStockDelta, 0)
   const estimatedSold = (hasPreviousProgramHistory ? previous?.estimatedSold || 0 : 0) + soldDelta
   const estimatedRevenue = (hasPreviousProgramHistory ? previous?.estimatedRevenue || 0 : 0) + revenueDelta
   const restockQuantity = (hasPreviousProgramHistory ? previous?.restockQuantity || 0 : 0) + restockDelta
@@ -253,6 +256,7 @@ function updateStats(product, snapshot) {
       sampleOk: true,
       active: true,
       stock,
+      rawStockDelta,
       soldDelta,
       revenueDelta,
       price,
@@ -268,6 +272,7 @@ function updateStats(product, snapshot) {
     currentStock: stock,
     initialStock: hasPreviousProgramHistory ? previous?.initialStock ?? stock : stock,
     lastStock: stock,
+    rawStockDelta,
     soldDelta,
     estimatedSold,
     estimatedRevenue,

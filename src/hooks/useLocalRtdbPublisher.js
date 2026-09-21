@@ -43,6 +43,7 @@ function getProductSessionKey(product) {
 
 function getInventoryPrice(nextProduct, previousProduct) {
   if (nextProduct.broadcaster === 'SK' || previousProduct?.broadcaster === 'SK') return nextProduct.price || 0
+  if (nextProduct.broadcaster === 'K쇼핑' || previousProduct?.broadcaster === 'K쇼핑') return nextProduct.price || 0
   return nextProduct.price || previousProduct?.price || 0
 }
 
@@ -103,13 +104,17 @@ function normalizeHistory(history, collectedAt, cycleBucketAt) {
     if (bucketAt < cutoffAt) continue
 
     const previous = byBucket.get(bucketAt)
+    const rawSoldDelta = point.soldDelta || 0
+    const soldDelta = Math.max(rawSoldDelta, 0)
+    const revenueDelta = Math.max(point.revenueDelta ?? soldDelta * (point.price || 0), 0)
     byBucket.set(bucketAt, {
       ...(previous || {}),
       ...point,
       bucketAt,
       collectedAt: Math.max(previous?.collectedAt || 0, point.collectedAt || bucketAt),
-      soldDelta: (previous?.soldDelta || 0) + (point.soldDelta || 0),
-      revenueDelta: (previous?.revenueDelta || 0) + (point.revenueDelta ?? (point.soldDelta || 0) * (point.price || 0)),
+      soldDelta: (previous?.soldDelta || 0) + soldDelta,
+      revenueDelta: (previous?.revenueDelta || 0) + revenueDelta,
+      restockDelta: (previous?.restockDelta || 0) + Math.max(-rawSoldDelta, point.restockDelta || 0, 0),
     })
   }
 
@@ -165,9 +170,10 @@ function mergeInventoryProduct(nextProduct, previousProduct, collectedAt, cycleB
 
   const currentStock = nextProduct.currentStock || nextProduct.totalStock || 0
   const previousStock = previousProduct.currentStock ?? previousProduct.lastStock ?? currentStock
-  const soldDelta = previousStock - currentStock
+  const rawStockDelta = previousStock - currentStock
+  const soldDelta = Math.max(rawStockDelta, 0)
   const revenueDelta = soldDelta * price
-  const restockDelta = Math.max(-soldDelta, 0)
+  const restockDelta = Math.max(-rawStockDelta, 0)
   const estimatedSold = (previousProduct.estimatedSold || 0) + soldDelta
   const estimatedRevenue = (previousProduct.estimatedRevenue || 0) + revenueDelta
   const restockQuantity = (previousProduct.restockQuantity || 0) + restockDelta
@@ -178,6 +184,7 @@ function mergeInventoryProduct(nextProduct, previousProduct, collectedAt, cycleB
     bucketAt: cycleBucketAt,
     active: true,
     stock: currentStock,
+    rawStockDelta,
     soldDelta,
     revenueDelta,
     price,
@@ -193,6 +200,7 @@ function mergeInventoryProduct(nextProduct, previousProduct, collectedAt, cycleB
     currentStock,
     lastStock: currentStock,
     initialStock: previousProduct.initialStock ?? nextProduct.initialStock ?? currentStock,
+    rawStockDelta,
     soldDelta,
     estimatedSold,
     estimatedRevenue,
