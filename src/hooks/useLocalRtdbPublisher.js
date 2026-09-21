@@ -150,6 +150,7 @@ function mergeInventoryProduct(nextProduct, previousProduct, collectedAt, cycleB
       soldDelta: 0,
       estimatedSold: previousProduct.estimatedSold || 0,
       estimatedRevenue: previousProduct.estimatedRevenue || 0,
+      restockQuantity: previousProduct.restockQuantity || 0,
       history: normalizeHistory(previousProduct.history, collectedAt, cycleBucketAt),
       collectedAt,
       sampleOk: true,
@@ -159,10 +160,12 @@ function mergeInventoryProduct(nextProduct, previousProduct, collectedAt, cycleB
 
   const currentStock = nextProduct.currentStock || nextProduct.totalStock || 0
   const previousStock = previousProduct.currentStock ?? previousProduct.lastStock ?? currentStock
-  const soldDelta = Math.max(previousStock - currentStock, 0)
+  const soldDelta = previousStock - currentStock
   const revenueDelta = soldDelta * price
+  const restockDelta = Math.max(-soldDelta, 0)
   const estimatedSold = (previousProduct.estimatedSold || 0) + soldDelta
   const estimatedRevenue = (previousProduct.estimatedRevenue || 0) + revenueDelta
+  const restockQuantity = (previousProduct.restockQuantity || 0) + restockDelta
   const history = normalizeHistory(previousProduct.history, collectedAt, cycleBucketAt)
 
   history.push({
@@ -175,6 +178,7 @@ function mergeInventoryProduct(nextProduct, previousProduct, collectedAt, cycleB
     price,
     estimatedSold,
     estimatedRevenue,
+    restockDelta,
   })
 
   return {
@@ -187,6 +191,7 @@ function mergeInventoryProduct(nextProduct, previousProduct, collectedAt, cycleB
     soldDelta,
     estimatedSold,
     estimatedRevenue,
+    restockQuantity,
     history: normalizeHistory(history, collectedAt, cycleBucketAt),
     collectedAt,
     sampleOk: true,

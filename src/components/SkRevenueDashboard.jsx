@@ -305,6 +305,7 @@ function getTickStep(value) {
 function getChartScaleInfo(data) {
   const values = data.flatMap((row) => channelDefs.map((channel) => row[channel.key] || 0))
   const rawMaxValue = Math.max(1, ...values)
+  const rawMinValue = Math.min(0, ...values)
   const channelPeaks = channelDefs
     .map((channel) => ({
       ...channel,
@@ -319,12 +320,16 @@ function getChartScaleInfo(data) {
       ? values.filter((value) => value <= otherMax * 3)
       : values
   const scaleMaxValue = Math.max(1, ...scaleValues)
+  const scaleMinValue = Math.min(0, ...values)
   const tickStep = getTickStep(scaleMaxValue)
   const axisMax = Math.max(tickStep, Math.ceil((scaleMaxValue * 1.08) / tickStep) * tickStep)
+  const axisMin = scaleMinValue < 0 ? -Math.max(tickStep, Math.ceil((Math.abs(scaleMinValue) * 1.08) / tickStep) * tickStep) : 0
 
   return {
     axisMax,
+    axisMin,
     rawMaxValue,
+    rawMinValue,
     tickStep,
     outlierChannelKey: hasSingleChannelSpike ? topPeak.key : null,
   }
@@ -374,17 +379,19 @@ function getPlotBox(chartSize, chartMargin) {
   }
 }
 
-function getScales(data, axisMax, chartSize, chartMargin) {
+function getScales(data, axisMin, axisMax, chartSize, chartMargin) {
   const firstAt = data[0]?.bucketAt || 0
   const lastAt = data.at(-1)?.bucketAt || firstAt + 1
   const plot = getPlotBox(chartSize, chartMargin)
+  const axisRange = Math.max(axisMax - axisMin, 1)
 
   return {
     plot,
     x: (bucketAt) => plot.left + ((bucketAt - firstAt) / Math.max(lastAt - firstAt, 1)) * (plot.right - plot.left),
     y: (value) => {
       if (value > axisMax) return plot.top - 24
-      return plot.bottom - (value / Math.max(axisMax, 1)) * (plot.bottom - plot.top)
+      if (value < axisMin) return plot.bottom + 24
+      return plot.bottom - ((value - axisMin) / axisRange) * (plot.bottom - plot.top)
     },
   }
 }
@@ -555,12 +562,12 @@ function getHighlightCandidates(anchor, bounds) {
     .sort((a, b) => a.distanceScore - b.distanceScore)
 }
 
-function layoutGraphOverlays({ programs, highlights, currentPoints, data, axisMax, chartSize, chartMargin }) {
+function layoutGraphOverlays({ programs, highlights, currentPoints, data, axisMin, axisMax, chartSize, chartMargin }) {
   if (!chartSize.width || !chartSize.height || !data.length) {
     return { programs: [], highlights: [], connectors: [], programConnectors: [], currentPoints }
   }
 
-  const scales = getScales(data, axisMax, chartSize, chartMargin)
+  const scales = getScales(data, axisMin, axisMax, chartSize, chartMargin)
   const lineAvoidRects = getLineAvoidRects(data, scales)
   const occupied = []
   const bounds = {
@@ -660,12 +667,13 @@ function layoutGraphOverlays({ programs, highlights, currentPoints, data, axisMa
   }
 }
 
-function avoidBadgeCollisions(points, axisMax) {
+function avoidBadgeCollisions(points, axisMin, axisMax) {
+  const axisRange = Math.max(axisMax - axisMin, 1)
   const sorted = points
     .filter(Boolean)
     .map((point) => ({
       ...point,
-      badgeBottom: 8 + (point.value / Math.max(axisMax, 1)) * 78,
+      badgeBottom: 8 + ((point.value - axisMin) / axisRange) * 78,
     }))
     .sort((a, b) => a.badgeBottom - b.badgeBottom)
 
@@ -697,12 +705,14 @@ function CombinedRevenueChart({ products, collectedAt, programs, nowAt }) {
     [collectedAt, nowAt, products, programs],
   )
   const scaleInfo = useMemo(() => getChartScaleInfo(data), [data])
-  const { axisMax, tickStep } = scaleInfo
-  const ticks = Array.from({ length: Math.floor(axisMax / tickStep) + 1 }, (_, index) => index * tickStep)
+  const { axisMin, axisMax, tickStep } = scaleInfo
+  const tickCount = Math.floor((axisMax - axisMin) / tickStep) + 1
+  const ticks = Array.from({ length: tickCount }, (_, index) => axisMin + index * tickStep)
   const timeTicks = useMemo(() => getTenMinuteTicks(data), [data])
   const lastRow = data.at(-1)
   const currentPoints = avoidBadgeCollisions(
     channelDefs.map((channel) => (lastRow ? getLatestChannelPoint(data, channel, nowAt) : null)),
+    axisMin,
     axisMax,
   )
   const highlights = channelDefs
@@ -732,11 +742,12 @@ function CombinedRevenueChart({ products, collectedAt, programs, nowAt }) {
         highlights,
         currentPoints,
         data,
+        axisMin,
         axisMax,
         chartSize,
         chartMargin,
       }),
-    [axisMax, chartPrograms, chartSize, currentPoints, data, highlights],
+    [axisMin, axisMax, chartPrograms, chartSize, currentPoints, data, highlights],
   )
 
   useEffect(() => {
@@ -831,7 +842,7 @@ function CombinedRevenueChart({ products, collectedAt, programs, nowAt }) {
               tickLine={false}
             />
             <YAxis
-              domain={[0, axisMax]}
+              domain={[axisMin, axisMax]}
               ticks={ticks}
               width={96}
               tickFormatter={formatKRW}

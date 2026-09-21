@@ -229,7 +229,7 @@ function updateStats(product, snapshot) {
     return point.active && pointAt >= product.broadcastStartAt && pointAt < product.broadcastEndAt - endBufferMs
   })
   const delta = hasPreviousProgramHistory ? previous.lastStock - stock : 0
-  const soldDelta = Math.max(delta, 0)
+  const soldDelta = delta
   const revenueDelta = soldDelta * price
   const restockDelta = Math.max(-delta, 0)
   const estimatedSold = (hasPreviousProgramHistory ? previous?.estimatedSold || 0 : 0) + soldDelta
@@ -247,6 +247,7 @@ function updateStats(product, snapshot) {
       price,
       estimatedSold,
       estimatedRevenue,
+      restockDelta,
     },
   ].slice(-maxSnapshots)
 
