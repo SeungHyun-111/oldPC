@@ -5,7 +5,7 @@ import { scheduleSources } from '../sources/scheduleSources'
 
 const apiBaseUrl = import.meta.env.VITE_OLDPC_API_BASE_URL || 'http://127.0.0.1:4174'
 const publishIntervalMs = Number(import.meta.env.VITE_OLDPC_PUBLISH_INTERVAL_MS || 60_000)
-const historyWindowMs = 120 * 60 * 1000
+const historyWindowMs = 14 * 24 * 60 * 60 * 1000
 const endBufferMs = 60 * 1000
 const inventorySources = [
   { key: 'skstoa', endpoint: '/api/skstoa/inventory' },
@@ -66,6 +66,9 @@ function createProgramBaseline(nextProduct, collectedAt, cycleBucketAt) {
     bucketAt: cycleBucketAt,
     active: true,
     stock: currentStock,
+    stockBriefOrderAbleCnt: nextProduct.totalBriefOrderAbleCnt ?? currentStock,
+    stockOrderAbleQty: nextProduct.totalOrderAbleQty ?? currentStock,
+    stockTmwDelyOrderAbleCnt: nextProduct.totalTmwDelyOrderAbleCnt ?? 0,
     soldDelta: 0,
     revenueDelta: 0,
     price,
@@ -118,7 +121,7 @@ function normalizeHistory(history, collectedAt, cycleBucketAt) {
     })
   }
 
-  return [...byBucket.values()].sort((a, b) => a.bucketAt - b.bucketAt).slice(-120)
+  return [...byBucket.values()].sort((a, b) => a.bucketAt - b.bucketAt)
 }
 
 function mergeInventoryProduct(nextProduct, previousProduct, collectedAt, cycleBucketAt) {
@@ -184,6 +187,9 @@ function mergeInventoryProduct(nextProduct, previousProduct, collectedAt, cycleB
     bucketAt: cycleBucketAt,
     active: true,
     stock: currentStock,
+    stockBriefOrderAbleCnt: nextProduct.totalBriefOrderAbleCnt ?? currentStock,
+    stockOrderAbleQty: nextProduct.totalOrderAbleQty ?? currentStock,
+    stockTmwDelyOrderAbleCnt: nextProduct.totalTmwDelyOrderAbleCnt ?? 0,
     rawStockDelta,
     soldDelta,
     revenueDelta,

@@ -1,8 +1,9 @@
 import https from 'node:https'
 
-const maxSnapshots = 120
+const collectionWindowMinutes = 120
+const historyRetentionMs = 14 * 24 * 60 * 60 * 1000
 const detailState = new Map()
-const windowMs = maxSnapshots * 60 * 1000
+const windowMs = collectionWindowMinutes * 60 * 1000
 const endBufferMs = 60 * 1000
 
 function decodeUnicodeEscapes(value) {
@@ -14,6 +15,38 @@ function parseNumber(value) {
   const normalized = String(value ?? '').replace(/[^\d.-]/g, '')
   const parsed = Number(normalized)
   return Number.isFinite(parsed) ? parsed : 0
+}
+
+function findOrderAbleOptions(value, options = []) {
+  if (!value || typeof value !== 'object') return options
+
+  if (Object.prototype.hasOwnProperty.call(value, 'goodsdtCode') && Object.prototype.hasOwnProperty.call(value, 'orderAbleQty')) {
+    options.push({
+      optionId: String(value.goodsdtCode || ''),
+      optionName: decodeUnicodeEscapes(value.goodsdtInfo || value.formName || ''),
+      orderAbleQty: parseNumber(value.orderAbleQty),
+      tmwDelyOrderAbleCnt: parseNumber(value.tmwDelyOrderAbleCnt),
+      saleGb: value.saleGb || '',
+    })
+  }
+
+  for (const child of Object.values(value)) {
+    if (child && typeof child === 'object') findOrderAbleOptions(child, options)
+  }
+
+  return options
+}
+
+function parseJsonOptionOrderAbleMap(html) {
+  const rawJson = html.match(/var\s+jsonOptionColorList\s*=\s*JSON\.parse\('([\s\S]*?)'\);/)?.[1]
+  if (!rawJson) return new Map()
+
+  try {
+    const parsed = JSON.parse(rawJson)
+    return new Map(findOrderAbleOptions(parsed).filter((option) => option.optionId).map((option) => [option.optionId, option]))
+  } catch {
+    return new Map()
+  }
 }
 
 function fetchText(url) {
@@ -63,24 +96,35 @@ function parseSkDetail(html, fallback) {
   const goodsSalePrice = html.match(/var\s+goodsSalePrice\s*=\s*Number\("([^"]+)"\)/)?.[1]
 
   const options = []
+  const orderAbleByOptionId = parseJsonOptionOrderAbleMap(html)
   const blocks = html.split('goodsOptions.push(Object.create(null));').slice(1)
 
   for (const block of blocks) {
     const optionId = block.match(/goodsdtCode\s*=\s*"([^"]+)"/)?.[1]
     const optionName = block.match(/goodsdtInfo\s*=\s*"([^"]*)"/)?.[1] || block.match(/gtmDtInfo\s*=\s*"([^"]*)"/)?.[1]
     const saleGb = block.match(/saleGb\s*=\s*"([^"]+)"/)?.[1]
-    const stockRaw = block.match(/briefOrderAbleCnt\s*=\s*"?([0-9]+)"?/)?.[1]
+    const briefOrderAbleCntRaw = block.match(/briefOrderAbleCnt\s*=\s*"?([0-9]+)"?/)?.[1]
+    const tmwDelyOrderAbleCntRaw = block.match(/tmwDelyOrderAbleCnt\s*=\s*"?([0-9]+)"?/)?.[1]
+    const orderAbleOption = orderAbleByOptionId.get(optionId)
 
-    if (!optionId || stockRaw == null) continue
+    if (!optionId || (briefOrderAbleCntRaw == null && !orderAbleOption)) continue
+    const briefOrderAbleCnt = parseNumber(briefOrderAbleCntRaw)
+    const orderAbleQty = orderAbleOption ? orderAbleOption.orderAbleQty : briefOrderAbleCnt
+    const tmwDelyOrderAbleCnt = orderAbleOption ? orderAbleOption.tmwDelyOrderAbleCnt : parseNumber(tmwDelyOrderAbleCntRaw)
     options.push({
       optionId,
       optionName: decodeUnicodeEscapes(optionName) || '기본',
-      stock: Number(stockRaw),
+      stock: orderAbleQty,
+      briefOrderAbleCnt,
+      orderAbleQty,
+      tmwDelyOrderAbleCnt,
       saleGb: saleGb || '',
     })
   }
 
-  const totalStock = options.reduce((sum, option) => sum + option.stock, 0)
+  const totalStock = options.reduce((sum, option) => sum + option.orderAbleQty, 0)
+  const totalBriefOrderAbleCnt = options.reduce((sum, option) => sum + option.briefOrderAbleCnt, 0)
+  const totalTmwDelyOrderAbleCnt = options.reduce((sum, option) => sum + option.tmwDelyOrderAbleCnt, 0)
 
   return {
     broadcaster: 'SK',
@@ -88,6 +132,9 @@ function parseSkDetail(html, fallback) {
     productName: decodeUnicodeEscapes(selectedName) || fallback.productName || fallback.productId,
     price: parseNumber(selectedPrice || goodsSalePrice),
     totalStock,
+    totalBriefOrderAbleCnt,
+    totalOrderAbleQty: totalStock,
+    totalTmwDelyOrderAbleCnt,
     options,
   }
 }
@@ -129,7 +176,7 @@ function getProductSessionKey(product) {
 
 function pruneDetailState(now = Date.now()) {
   for (const [key, product] of detailState.entries()) {
-    if ((product.broadcastEndAt || 0) < now - windowMs) detailState.delete(key)
+    if ((product.broadcastEndAt || 0) < now - historyRetentionMs) detailState.delete(key)
   }
 }
 
@@ -160,6 +207,9 @@ function updateStats(product, snapshot) {
   const previous = detailState.get(sessionKey)
   const collectedAt = Date.now()
   const stock = snapshot.totalStock
+  const briefStock = snapshot.totalBriefOrderAbleCnt ?? stock
+  const orderAbleStock = snapshot.totalOrderAbleQty ?? stock
+  const tmwDelyStock = snapshot.totalTmwDelyOrderAbleCnt ?? 0
   const price = snapshot.price || 0
   const hasPreviousProgramHistory = (previous?.history || []).some((point) => {
     const pointAt = point.collectedAt || 0
@@ -179,6 +229,9 @@ function updateStats(product, snapshot) {
       sampleOk: true,
       active: true,
       stock,
+      stockBriefOrderAbleCnt: briefStock,
+      stockOrderAbleQty: orderAbleStock,
+      stockTmwDelyOrderAbleCnt: tmwDelyStock,
       rawStockDelta,
       soldDelta,
       revenueDelta,
@@ -187,7 +240,7 @@ function updateStats(product, snapshot) {
       estimatedRevenue,
       restockDelta,
     },
-  ].slice(-maxSnapshots)
+  ].filter((point) => (point.collectedAt || collectedAt) >= collectedAt - historyRetentionMs)
 
   const next = {
     ...product,
@@ -243,13 +296,16 @@ export async function collectSkstoaInventory(scheduleItems = []) {
       results.push({
         ...previous,
         ...product,
-        history: (previous.history || []).filter((point) => point.collectedAt >= Date.now() - windowMs),
+        history: (previous.history || []).filter((point) => point.collectedAt >= Date.now() - historyRetentionMs),
       })
     } else {
       results.push({
         ...product,
         broadcaster: 'SK',
         totalStock: 0,
+        totalBriefOrderAbleCnt: 0,
+        totalOrderAbleQty: 0,
+        totalTmwDelyOrderAbleCnt: 0,
         currentStock: 0,
         initialStock: 0,
         estimatedSold: 0,
@@ -269,7 +325,8 @@ export async function collectSkstoaInventory(scheduleItems = []) {
     attemptedAt,
     collectedAt: completedAt,
     lastSuccessAt: activeSuccesses.length ? Math.max(...activeSuccesses.map((product) => product.lastSuccessAt || product.collectedAt || 0)) : undefined,
-    windowMinutes: maxSnapshots,
+    windowMinutes: collectionWindowMinutes,
+    retentionDays: 14,
     products: results,
     error: errors.join(' / ') || undefined,
     errorCount: results.filter((product) => product.sampleOk === false).length,
