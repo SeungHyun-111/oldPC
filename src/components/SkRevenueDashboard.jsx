@@ -12,6 +12,9 @@ import {
   YAxis,
 } from 'recharts'
 
+const SK_OUTLIER_REVENUE_THRESHOLD = 30_000_000
+const SK_OUTLIER_CORRECTION_WINDOW = 5
+
 const channelDefs = [
   { inventoryLabel: 'K쇼핑', sourceKey: 'ktalpha', key: 'kt', chartLabel: 'KT 알파 쇼핑', shortLabel: 'KT', color: '#1497ff' },
   { inventoryLabel: '신세계', sourceKey: 'shinsegae', key: 'ssg', chartLabel: 'SSG', shortLabel: 'SSG', color: '#ffc928' },
@@ -66,6 +69,61 @@ function getDeltaPoint(product, point, previous) {
     soldDelta,
     revenueDelta,
   }
+}
+
+function correctSkOutlierDeltas(deltas) {
+  return deltas.map((delta, index) => {
+    const outlierRevenue = delta.rawRevenueDelta ?? delta.revenueDelta ?? 0
+    if (delta.outlierAppliedYn !== 'Y' && outlierRevenue < SK_OUTLIER_REVENUE_THRESHOLD) return delta
+
+    const startIndex = Math.max(0, index - SK_OUTLIER_CORRECTION_WINDOW)
+    const endIndex = Math.min(deltas.length - 1, index + SK_OUTLIER_CORRECTION_WINDOW)
+    const neighbors = deltas.slice(startIndex, endIndex + 1).filter((neighbor, offset) => {
+      const neighborIndex = startIndex + offset
+      const neighborOutlierRevenue = neighbor.rawRevenueDelta ?? neighbor.revenueDelta ?? 0
+      return (
+        neighborIndex !== index &&
+        neighbor.outlierAppliedYn !== 'Y' &&
+        neighborOutlierRevenue < SK_OUTLIER_REVENUE_THRESHOLD &&
+        Number.isFinite(neighbor.soldDelta) &&
+        neighbor.soldDelta >= 0
+      )
+    })
+
+    const correctedSoldDelta = neighbors.length
+      ? Math.round(neighbors.reduce((sum, neighbor) => sum + (neighbor.soldDelta || 0), 0) / neighbors.length)
+      : 0
+    const price = delta.price || 0
+
+    return {
+      ...delta,
+      rawSoldDelta: delta.rawSoldDelta ?? delta.soldDelta,
+      rawRevenueDelta: delta.rawRevenueDelta ?? delta.revenueDelta,
+      soldDelta: correctedSoldDelta,
+      revenueDelta: correctedSoldDelta * price,
+      outlierCorrected: true,
+    }
+  })
+}
+
+function buildProductDeltaSeries(product, channel, history) {
+  const deltas = history.map((point, index) => {
+    const pointBucketAt = point.bucketAt || (point.collectedAt ? Math.floor(point.collectedAt / 60_000) * 60_000 : 0)
+    const { soldDelta, revenueDelta } = getDeltaPoint(product, point, history[index - 1])
+
+    return {
+      point,
+      pointBucketAt,
+      soldDelta,
+      revenueDelta,
+      rawSoldDelta: point.rawSoldDelta,
+      rawRevenueDelta: point.rawRevenueDelta,
+      outlierAppliedYn: point.outlierAppliedYn,
+      price: point.price || product.price || 0,
+    }
+  })
+
+  return channel.key === 'sk' ? correctSkOutlierDeltas(deltas) : deltas
 }
 
 function isPointInProductProgram(product, bucketAt) {
@@ -169,13 +227,12 @@ function buildMinuteChart(products, collectedAt, programItems = [], nowAt = Date
     const history = [...(product.history || [])].sort(
       (a, b) => (a.bucketAt || a.collectedAt || 0) - (b.bucketAt || b.collectedAt || 0),
     )
-    for (const [index, point] of history.entries()) {
-      const pointBucketAt = point.bucketAt || (point.collectedAt ? Math.floor(point.collectedAt / 60_000) * 60_000 : 0)
+    for (const delta of buildProductDeltaSeries(product, channel, history)) {
+      const { point, pointBucketAt, soldDelta, revenueDelta } = delta
       if (!pointBucketAt || pointBucketAt < windowStart) continue
       if (!isPointInProductProgram(product, pointBucketAt)) continue
 
       const row = ensureRow(pointBucketAt)
-      const { soldDelta, revenueDelta } = getDeltaPoint(product, point, history[index - 1])
       row[channel.key] = (row[channel.key] || 0) + revenueDelta
       row[`${channel.key}Count`] += soldDelta
     }
@@ -791,6 +848,7 @@ function CombinedRevenueChart({ products, collectedAt, programs, nowAt }) {
               {channel.chartLabel}
             </span>
           ))}
+          <span className="legend-note">SK 3천만원 이상/분은 예외값으로 앞뒤 5분 평균 보정</span>
         </div>
       </div>
 

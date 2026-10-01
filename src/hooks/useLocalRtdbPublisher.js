@@ -7,6 +7,7 @@ const apiBaseUrl = import.meta.env.VITE_OLDPC_API_BASE_URL || 'http://127.0.0.1:
 const publishIntervalMs = Number(import.meta.env.VITE_OLDPC_PUBLISH_INTERVAL_MS || 60_000)
 const historyWindowMs = 14 * 24 * 60 * 60 * 1000
 const endBufferMs = 60 * 1000
+const skOutlierRevenueThreshold = 30_000_000
 const inventorySources = [
   { key: 'skstoa', endpoint: '/api/skstoa/inventory' },
   { key: 'shinsegae', endpoint: '/api/shinsegae/inventory' },
@@ -194,8 +195,12 @@ function mergeInventoryProduct(nextProduct, previousProduct, collectedAt, cycleB
 
   const previousStock = previousPoint.stock ?? currentStock
   const rawStockDelta = previousStock - currentStock
-  const soldDelta = Math.max(rawStockDelta, 0)
-  const revenueDelta = soldDelta * price
+  const rawSoldDelta = Math.max(rawStockDelta, 0)
+  const rawRevenueDelta = rawSoldDelta * price
+  const isSkProduct = nextProduct.broadcaster === 'SK' || previousProduct.broadcaster === 'SK'
+  const outlierAppliedYn = isSkProduct && rawRevenueDelta >= skOutlierRevenueThreshold ? 'Y' : 'N'
+  const soldDelta = outlierAppliedYn === 'Y' ? 0 : rawSoldDelta
+  const revenueDelta = outlierAppliedYn === 'Y' ? 0 : rawRevenueDelta
   const restockDelta = Math.max(-rawStockDelta, 0)
   const estimatedSold = (previousPoint.estimatedSold || 0) + soldDelta
   const estimatedRevenue = (previousPoint.estimatedRevenue || 0) + revenueDelta
@@ -210,8 +215,13 @@ function mergeInventoryProduct(nextProduct, previousProduct, collectedAt, cycleB
     stockOrderAbleQty: nextProduct.totalOrderAbleQty ?? currentStock,
     stockTmwDelyOrderAbleCnt: nextProduct.totalTmwDelyOrderAbleCnt ?? 0,
     rawStockDelta,
+    rawSoldDelta,
+    rawRevenueDelta,
     soldDelta,
     revenueDelta,
+    outlierAppliedYn,
+    outlierReason: outlierAppliedYn === 'Y' ? 'minute_revenue_over_30000000' : undefined,
+    outlierStatus: outlierAppliedYn === 'Y' ? 'pending_neighbor_correction' : undefined,
     price,
     estimatedSold,
     estimatedRevenue,
@@ -226,7 +236,10 @@ function mergeInventoryProduct(nextProduct, previousProduct, collectedAt, cycleB
     lastStock: currentStock,
     initialStock: history[0]?.stock ?? currentStock,
     rawStockDelta,
+    rawSoldDelta,
+    rawRevenueDelta,
     soldDelta,
+    outlierAppliedYn,
     estimatedSold,
     estimatedRevenue,
     restockQuantity,

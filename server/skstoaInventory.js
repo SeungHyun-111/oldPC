@@ -5,6 +5,7 @@ const historyRetentionMs = 14 * 24 * 60 * 60 * 1000
 const detailState = new Map()
 const windowMs = collectionWindowMinutes * 60 * 1000
 const endBufferMs = 60 * 1000
+const outlierRevenueThreshold = 30_000_000
 
 function decodeUnicodeEscapes(value) {
   if (!value) return ''
@@ -82,6 +83,52 @@ function fetchText(url) {
     })
     request.on('error', reject)
   })
+}
+
+async function fetchJson(url) {
+  const text = await fetchText(url)
+  return JSON.parse(text)
+}
+
+async function fetchEmpPriceMap(products) {
+  const goodsCodes = [...new Set(products.map((product) => product.productId).filter(Boolean))]
+  if (!goodsCodes.length) return new Map()
+
+  const url = `https://www.skstoa.com/goods-search/empPriceSearch?goodsCodes=${encodeURIComponent(goodsCodes.join(','))}&dealCodes=`
+  const payload = await fetchJson(url)
+  if (String(payload?.code) !== '200' || !Array.isArray(payload.emPriceList)) {
+    throw new Error(`SK empPriceSearch ${payload?.code || 'failed'}`)
+  }
+
+  return new Map(payload.emPriceList.map((item) => [String(item.goodsCode || ''), item]))
+}
+
+function parseSkEmpPrice(item, fallback) {
+  const stock = parseNumber(item?.orderAbleQty)
+  const price = parseNumber(item?.emPrice || item?.salePrice || fallback.price)
+
+  return {
+    broadcaster: 'SK',
+    productId: fallback.productId,
+    productName: fallback.productName || fallback.productId,
+    price,
+    totalStock: stock,
+    totalBriefOrderAbleCnt: stock,
+    totalOrderAbleQty: stock,
+    totalTmwDelyOrderAbleCnt: 0,
+    stockSource: 'empPriceSearch.orderAbleQty',
+    options: [
+      {
+        optionId: fallback.productId,
+        optionName: '상품합계',
+        stock,
+        briefOrderAbleCnt: stock,
+        orderAbleQty: stock,
+        tmwDelyOrderAbleCnt: 0,
+        saleGb: stock > 0 ? '00' : '',
+      },
+    ],
+  }
 }
 
 function parseSkDetail(html, fallback) {
@@ -216,8 +263,11 @@ function updateStats(product, snapshot) {
     return point.active && pointAt >= product.broadcastStartAt && pointAt < product.broadcastEndAt - endBufferMs
   })
   const rawStockDelta = hasPreviousProgramHistory ? previous.lastStock - stock : 0
-  const soldDelta = Math.max(rawStockDelta, 0)
-  const revenueDelta = soldDelta * price
+  const rawSoldDelta = Math.max(rawStockDelta, 0)
+  const rawRevenueDelta = rawSoldDelta * price
+  const outlierAppliedYn = rawRevenueDelta >= outlierRevenueThreshold ? 'Y' : 'N'
+  const soldDelta = outlierAppliedYn === 'Y' ? 0 : rawSoldDelta
+  const revenueDelta = outlierAppliedYn === 'Y' ? 0 : rawRevenueDelta
   const restockDelta = Math.max(-rawStockDelta, 0)
   const estimatedSold = (hasPreviousProgramHistory ? previous?.estimatedSold || 0 : 0) + soldDelta
   const estimatedRevenue = (hasPreviousProgramHistory ? previous?.estimatedRevenue || 0 : 0) + revenueDelta
@@ -233,8 +283,13 @@ function updateStats(product, snapshot) {
       stockOrderAbleQty: orderAbleStock,
       stockTmwDelyOrderAbleCnt: tmwDelyStock,
       rawStockDelta,
+      rawSoldDelta,
+      rawRevenueDelta,
       soldDelta,
       revenueDelta,
+      outlierAppliedYn,
+      outlierReason: outlierAppliedYn === 'Y' ? 'minute_revenue_over_30000000' : undefined,
+      outlierStatus: outlierAppliedYn === 'Y' ? 'pending_neighbor_correction' : undefined,
       price,
       estimatedSold,
       estimatedRevenue,
@@ -249,7 +304,10 @@ function updateStats(product, snapshot) {
     initialStock: hasPreviousProgramHistory ? previous?.initialStock ?? stock : stock,
     lastStock: stock,
     rawStockDelta,
+    rawSoldDelta,
+    rawRevenueDelta,
     soldDelta,
+    outlierAppliedYn,
     estimatedSold,
     estimatedRevenue,
     restockQuantity,
@@ -271,11 +329,20 @@ export async function collectSkstoaInventory(scheduleItems = []) {
   const results = []
   const errors = []
   const activeSuccesses = []
+  let empPriceMap = new Map()
+
+  try {
+    empPriceMap = await fetchEmpPriceMap(activeProducts)
+  } catch (error) {
+    if (activeProducts.length) errors.push(`empPriceSearch: ${error.message}`)
+  }
 
   for (const product of activeProducts) {
     try {
-      const html = await fetchText(`https://www.skstoa.com/display/goods/${product.productId}`)
-      const snapshot = parseSkDetail(html, product)
+      const empPrice = empPriceMap.get(product.productId)
+      const snapshot = empPrice
+        ? parseSkEmpPrice(empPrice, product)
+        : parseSkDetail(await fetchText(`https://www.skstoa.com/display/goods/${product.productId}`), product)
       const result = updateStats(product, snapshot)
       activeSuccesses.push(result)
       results.push(result)
