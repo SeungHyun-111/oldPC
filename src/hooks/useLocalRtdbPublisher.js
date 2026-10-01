@@ -98,6 +98,16 @@ function hasActiveSample(product) {
   return product?.sampleOk === true || getHistory(product?.history).some((point) => point.active)
 }
 
+function getLastActiveSnapshot(history, startAt, endAt) {
+  return getHistory(history)
+    .filter((point) => {
+      const pointAt = point.collectedAt || point.bucketAt || 0
+      return point.active && pointAt >= startAt && pointAt < endAt
+    })
+    .sort((a, b) => (a.collectedAt || a.bucketAt || 0) - (b.collectedAt || b.bucketAt || 0))
+    .at(-1)
+}
+
 function normalizeHistory(history, collectedAt, cycleBucketAt) {
   const cutoffAt = getMinuteBucketAt(collectedAt - historyWindowMs)
   const byBucket = new Map()
@@ -172,15 +182,24 @@ function mergeInventoryProduct(nextProduct, previousProduct, collectedAt, cycleB
   }
 
   const currentStock = nextProduct.currentStock || nextProduct.totalStock || 0
-  const previousStock = previousProduct.currentStock ?? previousProduct.lastStock ?? currentStock
+  const history = normalizeHistory(previousProduct.history, collectedAt, cycleBucketAt)
+  const previousPoint = getLastActiveSnapshot(
+    history,
+    nextProduct.broadcastStartAt || previousProduct.broadcastStartAt || 0,
+    (nextProduct.broadcastEndAt || previousProduct.broadcastEndAt || 0) - endBufferMs,
+  )
+  if (!previousPoint) {
+    return createProgramBaseline(nextProduct, collectedAt, cycleBucketAt)
+  }
+
+  const previousStock = previousPoint.stock ?? currentStock
   const rawStockDelta = previousStock - currentStock
   const soldDelta = Math.max(rawStockDelta, 0)
   const revenueDelta = soldDelta * price
   const restockDelta = Math.max(-rawStockDelta, 0)
-  const estimatedSold = (previousProduct.estimatedSold || 0) + soldDelta
-  const estimatedRevenue = (previousProduct.estimatedRevenue || 0) + revenueDelta
-  const restockQuantity = (previousProduct.restockQuantity || 0) + restockDelta
-  const history = normalizeHistory(previousProduct.history, collectedAt, cycleBucketAt)
+  const estimatedSold = (previousPoint.estimatedSold || 0) + soldDelta
+  const estimatedRevenue = (previousPoint.estimatedRevenue || 0) + revenueDelta
+  const restockQuantity = (previousPoint.restockQuantity || 0) + restockDelta
 
   history.push({
     collectedAt,
@@ -205,7 +224,7 @@ function mergeInventoryProduct(nextProduct, previousProduct, collectedAt, cycleB
     price,
     currentStock,
     lastStock: currentStock,
-    initialStock: previousProduct.initialStock ?? nextProduct.initialStock ?? currentStock,
+    initialStock: history[0]?.stock ?? currentStock,
     rawStockDelta,
     soldDelta,
     estimatedSold,

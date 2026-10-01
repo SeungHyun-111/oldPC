@@ -238,19 +238,22 @@ function updateStats(product, snapshot) {
   const collectedAt = Date.now()
   const stock = snapshot.totalStock
   const price = snapshot.price || 0
-  const hasPreviousProgramHistory = (previous?.history || []).some((point) => {
+  const previousHistory = (previous?.history || []).filter((point) => {
     const pointAt = point.collectedAt || 0
     return point.active && pointAt >= product.broadcastStartAt && pointAt < product.broadcastEndAt - endBufferMs
   })
-  const rawStockDelta = hasPreviousProgramHistory ? previous.lastStock - stock : 0
+  const previousPoint = previousHistory.at(-1)
+  const previousStock = previousPoint?.stock
+  const hasPreviousSnapshot = previousStock !== undefined
+  const rawStockDelta = hasPreviousSnapshot ? previousStock - stock : 0
   const soldDelta = Math.max(rawStockDelta, 0)
   const revenueDelta = soldDelta * price
   const restockDelta = Math.max(-rawStockDelta, 0)
-  const estimatedSold = (hasPreviousProgramHistory ? previous?.estimatedSold || 0 : 0) + soldDelta
-  const estimatedRevenue = (hasPreviousProgramHistory ? previous?.estimatedRevenue || 0 : 0) + revenueDelta
-  const restockQuantity = (hasPreviousProgramHistory ? previous?.restockQuantity || 0 : 0) + restockDelta
+  const estimatedSold = (hasPreviousSnapshot ? previousPoint?.estimatedSold || 0 : 0) + soldDelta
+  const estimatedRevenue = (hasPreviousSnapshot ? previousPoint?.estimatedRevenue || 0 : 0) + revenueDelta
+  const restockQuantity = (hasPreviousSnapshot ? previousPoint?.restockQuantity || 0 : 0) + restockDelta
   const history = [
-    ...(hasPreviousProgramHistory ? previous?.history || [] : []),
+    ...(hasPreviousSnapshot ? previousHistory : []),
     {
       collectedAt,
       sampleOk: true,
@@ -270,7 +273,7 @@ function updateStats(product, snapshot) {
     ...product,
     ...snapshot,
     currentStock: stock,
-    initialStock: hasPreviousProgramHistory ? previous?.initialStock ?? stock : stock,
+    initialStock: history[0]?.stock ?? stock,
     lastStock: stock,
     rawStockDelta,
     soldDelta,

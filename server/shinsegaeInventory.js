@@ -122,10 +122,13 @@ function requestDetailInfo(productId) {
 
 function parseDetailInfo(payload, fallback) {
   const options = findOptionStocks(payload, fallback.productId)
+  const productSummaryRaw = payload?.uintGoodsVO?.briefOrderAbleCnt
+  const hasProductSummary = productSummaryRaw !== undefined && productSummaryRaw !== null
+  const productSummaryOrderAbleCnt = parseNumber(productSummaryRaw)
+  const optionOrderAbleCnt = options.reduce((sum, option) => sum + option.stock, 0)
   const allStocks = findAllStocks(payload)
   const summaryStock = allStocks.find((option) => option.optionId === fallback.productId)?.stock
-  const stockFromOptions = options.reduce((sum, option) => sum + option.stock, 0)
-  const totalStock = stockFromOptions || summaryStock || parseNumber(findFirstKeyValue(payload, 'briefOrderAbleCnt'))
+  const totalStock = hasProductSummary ? productSummaryOrderAbleCnt : summaryStock || optionOrderAbleCnt || parseNumber(findFirstKeyValue(payload, 'briefOrderAbleCnt'))
   const name = findFirstKeyValue(payload, 'goodsName') || findFirstKeyValue(payload, 'itemName') || fallback.productName
   const salePrice = findFirstKeyValue(payload, 'salePrice')
   const dcPrice = findFirstKeyValue(payload, 'dcPrice')
@@ -138,6 +141,9 @@ function parseDetailInfo(payload, fallback) {
     productName: String(name || fallback.productName || fallback.productId),
     price: parseNumber(price),
     totalStock,
+    productSummaryOrderAbleCnt,
+    optionOrderAbleCnt,
+    stockSource: hasProductSummary ? 'productSummaryOrderAbleCnt' : optionOrderAbleCnt ? 'optionOrderAbleCnt' : 'briefOrderAbleCnt',
     options: options.length ? options : [{ optionId: fallback.productId, optionName: '기본', stock: totalStock }],
   }
 }
