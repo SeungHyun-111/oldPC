@@ -7,7 +7,10 @@ const apiBaseUrl = import.meta.env.VITE_OLDPC_API_BASE_URL || 'http://127.0.0.1:
 const publishIntervalMs = Number(import.meta.env.VITE_OLDPC_PUBLISH_INTERVAL_MS || 60_000)
 const historyWindowMs = 14 * 24 * 60 * 60 * 1000
 const endBufferMs = 60 * 1000
-const skOutlierRevenueThreshold = 30_000_000
+const outlierRevenueThreshold = 30_000_000
+const publishSecond = 55
+let globalRunning = false
+let globalLastPublishBucketAt = 0
 const inventorySources = [
   { key: 'skstoa', endpoint: '/api/skstoa/inventory' },
   { key: 'shinsegae', endpoint: '/api/shinsegae/inventory' },
@@ -32,6 +35,17 @@ function getHistory(history) {
 
 function getMinuteBucketAt(value) {
   return Math.floor(value / 60_000) * 60_000
+}
+
+function getNextPublishDelay(nowAt = Date.now()) {
+  const now = new Date(nowAt)
+  const next = new Date(nowAt)
+  next.setMilliseconds(0)
+  next.setSeconds(publishSecond)
+  if (now.getSeconds() > publishSecond || (now.getSeconds() === publishSecond && now.getMilliseconds() > 0)) {
+    next.setMinutes(next.getMinutes() + 1)
+  }
+  return Math.max(next.getTime() - nowAt, 0)
 }
 
 function getPointBucketAt(point, fallbackAt) {
@@ -194,11 +208,13 @@ function mergeInventoryProduct(nextProduct, previousProduct, collectedAt, cycleB
   }
 
   const previousStock = previousPoint.stock ?? currentStock
+  const isKtProduct = nextProduct.broadcaster === 'K쇼핑' || previousProduct.broadcaster === 'K쇼핑'
   const rawStockDelta = previousStock - currentStock
   const rawSoldDelta = Math.max(rawStockDelta, 0)
   const rawRevenueDelta = rawSoldDelta * price
   const isSkProduct = nextProduct.broadcaster === 'SK' || previousProduct.broadcaster === 'SK'
-  const outlierAppliedYn = isSkProduct && rawRevenueDelta >= skOutlierRevenueThreshold ? 'Y' : 'N'
+  const isSsgProduct = nextProduct.broadcaster === '신세계' || previousProduct.broadcaster === '신세계' || nextProduct.broadcaster === 'SSG' || previousProduct.broadcaster === 'SSG'
+  const outlierAppliedYn = (isSkProduct || isKtProduct || isSsgProduct) && rawRevenueDelta >= outlierRevenueThreshold ? 'Y' : 'N'
   const soldDelta = outlierAppliedYn === 'Y' ? 0 : rawSoldDelta
   const revenueDelta = outlierAppliedYn === 'Y' ? 0 : rawRevenueDelta
   const restockDelta = Math.max(-rawStockDelta, 0)
@@ -314,6 +330,10 @@ function sanitizeFirebaseValue(value) {
 
 async function publishOnce() {
   const startedAt = Date.now()
+  const publishBucketAt = getMinuteBucketAt(startedAt)
+  if (globalRunning || globalLastPublishBucketAt === publishBucketAt) return false
+  globalRunning = true
+  globalLastPublishBucketAt = publishBucketAt
   const channelErrors = []
 
   for (const source of scheduleSources) {
@@ -366,6 +386,7 @@ async function publishOnce() {
     lastBrowserInventoryStartedAt: inventoryStartedAt,
     lastBrowserPublishBucketAt: cycleBucketAt,
     intervalMs: publishIntervalMs,
+    publishSecond,
     status: channelErrors.length ? 'partial-error' : 'ok',
     error: channelErrors.join(' / ') || null,
     mode: 'browser',
@@ -375,6 +396,8 @@ async function publishOnce() {
   if (!channelErrors.length) collectorUpdate.lastSuccessAt = completedAt
 
   await update(ref(rtdb, `${rtdbBasePath}/collector`), collectorUpdate)
+  globalRunning = false
+  return true
 }
 
 export function useLocalRtdbPublisher() {
@@ -389,24 +412,24 @@ export function useLocalRtdbPublisher() {
     if (!canPublishFromThisPage()) return undefined
 
     let stopped = false
-    let running = false
+    let timer = null
 
     async function run() {
-      if (running || stopped) return
-      running = true
+      if (stopped) return
       setStatus((current) => ({ ...current, enabled: true, running: true, error: '' }))
 
       try {
-        await publishOnce()
+        const didPublish = await publishOnce()
         if (!stopped) {
-          setStatus({
+          setStatus((current) => ({
             enabled: true,
             running: false,
-            lastSuccessAt: Date.now(),
+            lastSuccessAt: didPublish ? Date.now() : current.lastSuccessAt,
             error: '',
-          })
+          }))
         }
       } catch (error) {
+        globalRunning = false
         console.error(error)
         if (!stopped) {
           setStatus((current) => ({
@@ -416,17 +439,22 @@ export function useLocalRtdbPublisher() {
             error: error.message,
           }))
         }
-      } finally {
-        running = false
       }
     }
 
-    run()
-    const timer = window.setInterval(run, publishIntervalMs)
+    function scheduleNextRun() {
+      if (stopped) return
+      timer = window.setTimeout(async () => {
+        await run()
+        scheduleNextRun()
+      }, getNextPublishDelay())
+    }
+
+    scheduleNextRun()
 
     return () => {
       stopped = true
-      window.clearInterval(timer)
+      if (timer) window.clearTimeout(timer)
     }
   }, [])
 

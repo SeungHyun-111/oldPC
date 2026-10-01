@@ -6,6 +6,7 @@ const maxSnapshots = 120
 const detailState = new Map()
 const windowMs = maxSnapshots * 60 * 1000
 const endBufferMs = 60 * 1000
+const outlierRevenueThreshold = 30_000_000
 const detailConcurrency = 3
 
 function parseNumber(value) {
@@ -238,8 +239,11 @@ function updateStats(product, snapshot) {
     return point.active && pointAt >= product.broadcastStartAt && pointAt < product.broadcastEndAt - endBufferMs
   })
   const rawStockDelta = hasPreviousProgramHistory ? previous.lastStock - stock : 0
-  const soldDelta = Math.max(rawStockDelta, 0)
-  const revenueDelta = soldDelta * price
+  const rawSoldDelta = Math.max(rawStockDelta, 0)
+  const rawRevenueDelta = rawSoldDelta * price
+  const outlierAppliedYn = rawRevenueDelta >= outlierRevenueThreshold ? 'Y' : 'N'
+  const soldDelta = outlierAppliedYn === 'Y' ? 0 : rawSoldDelta
+  const revenueDelta = outlierAppliedYn === 'Y' ? 0 : rawRevenueDelta
   const restockDelta = Math.max(-rawStockDelta, 0)
   const estimatedSold = (hasPreviousProgramHistory ? previous?.estimatedSold || 0 : 0) + soldDelta
   const estimatedRevenue = (hasPreviousProgramHistory ? previous?.estimatedRevenue || 0 : 0) + revenueDelta
@@ -252,8 +256,13 @@ function updateStats(product, snapshot) {
       active: true,
       stock,
       rawStockDelta,
+      rawSoldDelta,
+      rawRevenueDelta,
       soldDelta,
       revenueDelta,
+      outlierAppliedYn,
+      outlierReason: outlierAppliedYn === 'Y' ? 'minute_revenue_over_30000000' : undefined,
+      outlierStatus: outlierAppliedYn === 'Y' ? 'pending_neighbor_correction' : undefined,
       price,
       estimatedSold,
       estimatedRevenue,
@@ -268,7 +277,10 @@ function updateStats(product, snapshot) {
     initialStock: hasPreviousProgramHistory ? previous?.initialStock ?? stock : stock,
     lastStock: stock,
     rawStockDelta,
+    rawSoldDelta,
+    rawRevenueDelta,
     soldDelta,
+    outlierAppliedYn,
     estimatedSold,
     estimatedRevenue,
     restockQuantity,

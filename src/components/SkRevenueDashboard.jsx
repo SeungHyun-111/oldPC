@@ -12,8 +12,8 @@ import {
   YAxis,
 } from 'recharts'
 
-const SK_OUTLIER_REVENUE_THRESHOLD = 30_000_000
-const SK_OUTLIER_CORRECTION_WINDOW = 5
+const OUTLIER_REVENUE_THRESHOLD = 30_000_000
+const OUTLIER_CORRECTION_WINDOW = 5
 
 const channelDefs = [
   { inventoryLabel: 'K쇼핑', sourceKey: 'ktalpha', key: 'kt', chartLabel: 'KT 알파 쇼핑', shortLabel: 'KT', color: '#1497ff' },
@@ -71,20 +71,20 @@ function getDeltaPoint(product, point, previous) {
   }
 }
 
-function correctSkOutlierDeltas(deltas) {
+function correctOutlierDeltas(deltas) {
   return deltas.map((delta, index) => {
     const outlierRevenue = delta.rawRevenueDelta ?? delta.revenueDelta ?? 0
-    if (delta.outlierAppliedYn !== 'Y' && outlierRevenue < SK_OUTLIER_REVENUE_THRESHOLD) return delta
+    if (delta.outlierAppliedYn !== 'Y' && outlierRevenue < OUTLIER_REVENUE_THRESHOLD) return delta
 
-    const startIndex = Math.max(0, index - SK_OUTLIER_CORRECTION_WINDOW)
-    const endIndex = Math.min(deltas.length - 1, index + SK_OUTLIER_CORRECTION_WINDOW)
+    const startIndex = Math.max(0, index - OUTLIER_CORRECTION_WINDOW)
+    const endIndex = Math.min(deltas.length - 1, index + OUTLIER_CORRECTION_WINDOW)
     const neighbors = deltas.slice(startIndex, endIndex + 1).filter((neighbor, offset) => {
       const neighborIndex = startIndex + offset
       const neighborOutlierRevenue = neighbor.rawRevenueDelta ?? neighbor.revenueDelta ?? 0
       return (
         neighborIndex !== index &&
         neighbor.outlierAppliedYn !== 'Y' &&
-        neighborOutlierRevenue < SK_OUTLIER_REVENUE_THRESHOLD &&
+        neighborOutlierRevenue < OUTLIER_REVENUE_THRESHOLD &&
         Number.isFinite(neighbor.soldDelta) &&
         neighbor.soldDelta >= 0
       )
@@ -123,7 +123,7 @@ function buildProductDeltaSeries(product, channel, history) {
     }
   })
 
-  return channel.key === 'sk' ? correctSkOutlierDeltas(deltas) : deltas
+  return correctOutlierDeltas(deltas)
 }
 
 function isPointInProductProgram(product, bucketAt) {
@@ -848,7 +848,7 @@ function CombinedRevenueChart({ products, collectedAt, programs, nowAt }) {
               {channel.chartLabel}
             </span>
           ))}
-          <span className="legend-note">SK 3천만원 이상/분은 예외값으로 앞뒤 5분 평균 보정</span>
+          <span className="legend-note">3천만원 이상/분은 예외값으로 앞뒤 5분 평균 보정</span>
         </div>
       </div>
 
