@@ -14,6 +14,9 @@ const channelTheme = {
   KT알파쇼핑: { accent: '#1497ff', shortLabel: 'KT' },
 }
 
+const outlierRevenueThreshold = 30_000_000
+const outlierCorrectionWindow = 5
+
 function getCurrentClock() {
   const parts = Object.fromEntries(seoulClockFormatter.formatToParts(new Date()).map((part) => [part.type, part.value]))
   const hour = String(Number(parts.hour) % 24).padStart(2, '0')
@@ -36,18 +39,64 @@ function getDisplayName(product) {
   return (product.productName || product.productId || '').replace(/^\[[^\]]+\]/, '').trim()
 }
 
+function getRuntimeDeltas(product) {
+  const history = [...(product.history || [])].sort((a, b) => (a.bucketAt || a.collectedAt || 0) - (b.bucketAt || b.collectedAt || 0))
+  const deltas = history.map((point) => {
+    const soldDelta = Math.max(point.soldDelta || 0, 0)
+    const revenueDelta = Math.max(point.revenueDelta ?? soldDelta * (point.price || product.price || 0), 0)
+
+    return {
+      point,
+      soldDelta,
+      revenueDelta,
+      rawRevenueDelta: point.rawRevenueDelta,
+      outlierAppliedYn: point.outlierAppliedYn,
+      price: point.price || product.price || 0,
+    }
+  })
+
+  return deltas.map((delta, index) => {
+    const outlierRevenue = delta.rawRevenueDelta ?? delta.revenueDelta ?? 0
+    if (delta.outlierAppliedYn !== 'Y' && outlierRevenue < outlierRevenueThreshold) return delta
+
+    const startIndex = Math.max(0, index - outlierCorrectionWindow)
+    const endIndex = Math.min(deltas.length - 1, index + outlierCorrectionWindow)
+    const neighbors = deltas.slice(startIndex, endIndex + 1).filter((neighbor, offset) => {
+      const neighborIndex = startIndex + offset
+      const neighborOutlierRevenue = neighbor.rawRevenueDelta ?? neighbor.revenueDelta ?? 0
+      return (
+        neighborIndex !== index &&
+        neighbor.outlierAppliedYn !== 'Y' &&
+        neighborOutlierRevenue < outlierRevenueThreshold &&
+        Number.isFinite(neighbor.soldDelta) &&
+        neighbor.soldDelta >= 0
+      )
+    })
+    const correctedSoldDelta = neighbors.length
+      ? Math.round(neighbors.reduce((sum, neighbor) => sum + (neighbor.soldDelta || 0), 0) / neighbors.length)
+      : 0
+
+    return {
+      ...delta,
+      soldDelta: correctedSoldDelta,
+      revenueDelta: correctedSoldDelta * (delta.price || 0),
+    }
+  })
+}
+
 function getProductRuntimeStats(product) {
   const startAt = product.broadcastStartAt || 0
   const endAt = product.broadcastEndAt || 0
 
-  return (product.history || []).reduce(
+  return getRuntimeDeltas(product).reduce(
     (sum, point) => {
-      const pointAt = point.bucketAt || point.collectedAt || 0
+      const sourcePoint = point.point || point
+      const pointAt = sourcePoint.bucketAt || sourcePoint.collectedAt || 0
       if ((startAt && pointAt < startAt) || (endAt && pointAt >= endAt)) return sum
 
       const soldDelta = Math.max(point.soldDelta || 0, 0)
       return {
-        revenue: sum.revenue + Math.max(point.revenueDelta ?? soldDelta * (point.price || product.price || 0), 0),
+        revenue: sum.revenue + Math.max(point.revenueDelta ?? soldDelta * (sourcePoint.price || product.price || 0), 0),
         sold: sum.sold + soldDelta,
       }
     },
