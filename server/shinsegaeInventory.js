@@ -184,6 +184,25 @@ function getProductSessionKey(product) {
   return `${product.productId || ''}-${product.broadcastStartAt || 0}`
 }
 
+function createFailedProduct(product, attemptedAt, error) {
+  return {
+    ...product,
+    broadcaster: '신세계',
+    totalStock: 0,
+    currentStock: 0,
+    initialStock: 0,
+    estimatedSold: 0,
+    estimatedRevenue: 0,
+    restockQuantity: 0,
+    soldDelta: 0,
+    history: [],
+    options: [],
+    attemptedAt,
+    sampleOk: false,
+    error: error.message,
+  }
+}
+
 function pruneDetailState(now = Date.now()) {
   for (const [key, product] of detailState.entries()) {
     if ((product.broadcastEndAt || 0) < now - windowMs) detailState.delete(key)
@@ -313,7 +332,7 @@ export async function collectShinsegaeInventory(scheduleItems = []) {
         return { ...previous, attemptedAt, sampleOk: false, error: error.message }
       }
       errors.push(`${product.productId}: ${error.message}`)
-      return null
+      return createFailedProduct(product, attemptedAt, error)
     }
   })
   results.push(...activeResults.filter(Boolean))
@@ -344,7 +363,7 @@ export async function collectShinsegaeInventory(scheduleItems = []) {
     }
   }
   pruneDetailState()
-  const activeSuccesses = activeResults.filter((product) => product?.sampleOk !== false)
+  const activeSuccesses = activeResults.filter((product) => product && product.sampleOk !== false)
   const completedAt = Date.now()
 
   return {
