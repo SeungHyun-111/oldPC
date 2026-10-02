@@ -534,9 +534,9 @@
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  width: min(420px, 36vw);
-  min-width: 320px;
-  height: 36px;
+  width: min(760px, 56vw);
+  min-width: 520px;
+  height: 52px;
   margin-left: auto;
   overflow: hidden;
   border: 1px solid rgba(226, 232, 240, 0.2);
@@ -553,21 +553,20 @@
 
 .zappingTickerRail {
   display: grid;
-  grid-template-columns: 54px 48px minmax(0, 1fr) 48px;
+  grid-template-columns: 54px repeat(3, minmax(0, 1fr));
   align-items: center;
-  gap: 9px;
+  gap: 8px;
   height: 100%;
-  padding: 0 12px;
+  padding: 0 10px;
   animation: zappingTickerIn 260ms ease-out;
 }
 
 .zappingTickerChannel,
-.zappingTickerTime,
-.zappingTickerEnd,
-.zappingTickerRail strong,
+.zappingTickerProgram,
+.zappingTickerProgram b,
+.zappingTickerProgram strong,
 .zappingTickerEmpty {
   overflow: hidden;
-  line-height: 1;
   text-overflow: ellipsis;
   text-shadow: 0 2px 8px rgba(0, 0, 0, 0.78);
   white-space: nowrap;
@@ -579,21 +578,51 @@
   font-weight: 950;
 }
 
-.zappingTickerTime,
-.zappingTickerEnd {
+.zappingTickerProgram {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: 14px 18px;
+  column-gap: 6px;
+  align-items: center;
+  min-width: 0;
+  padding: 5px 7px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 5px;
+  background: rgba(15, 23, 42, 0.42);
+}
+
+.zappingTickerProgram em {
+  color: #8ea4bd;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 950;
+  line-height: 1;
+}
+
+.zappingTickerProgram b {
   color: #bfd0e4;
+  font-size: 10px;
+  font-weight: 850;
+  line-height: 1;
+}
+
+.zappingTickerProgram strong {
+  grid-column: 1 / -1;
+  color: #dbeafe;
   font-size: 11px;
   font-weight: 850;
+  line-height: 1.1;
 }
 
-.zappingTickerRail strong {
+.zappingTickerProgram.isCurrent {
+  border-color: rgba(56, 189, 248, 0.42);
+  background: rgba(14, 116, 144, 0.24);
+  box-shadow: inset 0 0 14px rgba(56, 189, 248, 0.11);
+}
+
+.zappingTickerProgram.isCurrent em,
+.zappingTickerProgram.isCurrent strong {
   color: #f8fafc;
-  font-size: 12px;
-  font-weight: 850;
-}
-
-.zappingTickerEnd {
-  text-align: right;
 }
 
 .zappingTickerEmpty {

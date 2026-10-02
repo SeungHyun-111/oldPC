@@ -662,15 +662,44 @@ function buildZappingTickerItems(session, nowAt) {
   byChannel.forEach((items) => {
     items.sort((a, b) => a.startAt - b.startAt || a.title.localeCompare(b.title, 'ko-KR'))
     items.forEach((item, index) => {
-      item.endAt = items[index + 1]?.startAt || null
+      item.endAt = items[index + 1]?.startAt || item.startAt + 60 * 60 * 1000
     })
   })
 
   return [...byChannel.values()]
-    .flat()
-    .filter((item) => item.startAt >= currentMinute)
-    .sort((a, b) => a.startAt - b.startAt || a.channel.localeCompare(b.channel, 'ko-KR'))
+    .map((items) => {
+      const currentIndex = items.findIndex((item) => item.startAt <= currentMinute && currentMinute < item.endAt)
+      if (currentIndex < 0) return null
+
+      const current = items[currentIndex]
+      return {
+        ...current,
+        previous: items[currentIndex - 1] || null,
+        next: items[currentIndex + 1] || null,
+      }
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.channel.localeCompare(b.channel, 'ko-KR') || a.startAt - b.startAt)
     .slice(0, 18)
+}
+
+function ZappingTickerProgram({ item, label, active = false }) {
+  return (
+    <span className={`zappingTickerProgram ${active ? 'isCurrent' : ''}`}>
+      <em>{label}</em>
+      {item ? (
+        <>
+          <b>{formatHourMinute(item.startAt)}-{formatHourMinute(item.endAt)}</b>
+          <strong>{item.title}</strong>
+        </>
+      ) : (
+        <>
+          <b>-</b>
+          <strong>-</strong>
+        </>
+      )}
+    </span>
+  )
 }
 
 function ZappingTicker({ items }) {
@@ -708,9 +737,9 @@ function ZappingTicker({ items }) {
       <div className="zappingTickerWindow">
         <div className="zappingTickerRail" key={`${current.channelKey}-${current.startAt}-${index}`}>
           <span className="zappingTickerChannel">{current.channel}</span>
-          <span className="zappingTickerTime">{formatHourMinute(current.startAt)}</span>
-          <strong>{current.title}</strong>
-          <span className="zappingTickerEnd">{current.endAt ? formatHourMinute(current.endAt) : '-'}</span>
+          <ZappingTickerProgram item={current.previous} label="이전" />
+          <ZappingTickerProgram item={current} label="현재" active />
+          <ZappingTickerProgram item={current.next} label="다음" />
         </div>
       </div>
     </div>
