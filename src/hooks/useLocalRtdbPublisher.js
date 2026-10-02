@@ -33,6 +33,10 @@ function getHistory(history) {
   return history || []
 }
 
+function getProducts(inventory) {
+  return Array.isArray(inventory?.products) ? inventory.products.filter(Boolean) : []
+}
+
 function getMinuteBucketAt(value) {
   return Math.floor(value / 60_000) * 60_000
 }
@@ -269,8 +273,9 @@ function mergeInventoryProduct(nextProduct, previousProduct, collectedAt, cycleB
 function mergeInventoryPayload(nextInventory, previousInventory, cycleBucketAt) {
   const attemptedAt = nextInventory.attemptedAt || nextInventory.collectedAt || Date.now()
   const collectedAt = nextInventory.collectedAt || attemptedAt
-  const previousBySession = new Map((previousInventory?.products || []).map((product) => [getProductSessionKey(product), product]))
-  const nextProducts = nextInventory.products || []
+  const previousProducts = getProducts(previousInventory)
+  const nextProducts = getProducts(nextInventory)
+  const previousBySession = new Map(previousProducts.map((product) => [getProductSessionKey(product), product]))
   const nextBySession = new Map(nextProducts.map((product) => [getProductSessionKey(product), product]))
   const mergedBySession = new Map()
 
@@ -278,7 +283,7 @@ function mergeInventoryPayload(nextInventory, previousInventory, cycleBucketAt) 
     mergedBySession.set(getProductSessionKey(product), mergeInventoryProduct(product, previousBySession.get(getProductSessionKey(product)), collectedAt, cycleBucketAt))
   }
 
-  for (const previousProduct of previousInventory?.products || []) {
+  for (const previousProduct of previousProducts) {
     const key = getProductSessionKey(previousProduct)
     if (nextBySession.has(key)) continue
     const history = normalizeHistory(previousProduct.history, collectedAt, cycleBucketAt)
@@ -291,7 +296,7 @@ function mergeInventoryPayload(nextInventory, previousInventory, cycleBucketAt) 
   }
 
   const products = [...mergedBySession.values()]
-  const okProducts = products.filter((product) => product.sampleOk !== false)
+  const okProducts = products.filter((product) => product && product.sampleOk !== false)
   const failedProducts = products.filter((product) => product.sampleOk === false)
   const lastSuccessAt =
     okProducts.length && nextProducts.some((product) => product.sampleOk !== false)

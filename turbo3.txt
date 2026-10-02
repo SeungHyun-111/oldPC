@@ -1,0 +1,1776 @@
+(globalThis.TURBOPACK || (globalThis.TURBOPACK = [])).push(["object" == typeof document ? document.currentScript : void 0, 38527, e => {
+    "use strict";
+    var t = e.i(91398)
+      , a = e.i(45246);
+    let l = e => "number" == typeof e ? `${parseInt(e)}px` : e
+      , r = ({width: e, height: r, hidden: s}) => (0,
+    t.jsxs)(t.Fragment, {
+        children: [(0,
+        t.jsx)("div", {
+            className: a.default.dynamic([["4697af3274c8065d", [l(e || 0), l(r || 0), s ? "none" : "block"]]])
+        }), (0,
+        t.jsx)(a.default, {
+            id: "4697af3274c8065d",
+            dynamic: [l(e || 0), l(r || 0), s ? "none" : "block"],
+            children: `div.__jsx-style-dynamic-selector{width:${l(e || 0)};height:${l(r || 0)};display:${s ? "none" : "block"};flex-shrink:0}`
+        })]
+    });
+    r.displayName = "Distans",
+    e.s(["default", 0, r])
+}
+, 12713, e => {
+    e.v({
+        bar: "LineGraph-module__Bj-ndG__bar",
+        container: "LineGraph-module__Bj-ndG__container",
+        dot: "LineGraph-module__Bj-ndG__dot",
+        tip: "LineGraph-module__Bj-ndG__tip"
+    })
+}
+, 25733, 17525, e => {
+    "use strict";
+    var t = e.i(91398)
+      , a = e.i(91788)
+      , l = e.i(7611)
+      , r = e.i(99523)
+      , s = e.i(5940);
+    let i = {
+        datetime: "MMM D, YYYY, h:mm:ss a",
+        millisecond: "h:mm:ss.SSS a",
+        second: "h:mm:ss a",
+        minute: "h:mm a",
+        hour: "hA",
+        day: "MMM D",
+        week: "ll",
+        month: "MMM YYYY",
+        quarter: "[Q]Q - YYYY",
+        year: "YYYY"
+    };
+    s._adapters._date.override("function" == typeof r.default ? {
+        _id: "moment",
+        formats: function() {
+            return i
+        },
+        parse: function(e, t) {
+            return "string" == typeof e && "string" == typeof t ? e = (0,
+            r.default)(e, t) : e instanceof r.default || (e = (0,
+            r.default)(e)),
+            e.isValid() ? e.valueOf() : null
+        },
+        format: function(e, t) {
+            return (0,
+            r.default)(e).format(t)
+        },
+        add: function(e, t, a) {
+            return (0,
+            r.default)(e).add(t, a).valueOf()
+        },
+        diff: function(e, t, a) {
+            return (0,
+            r.default)(e).diff((0,
+            r.default)(t), a)
+        },
+        startOf: function(e, t, a) {
+            return (e = (0,
+            r.default)(e),
+            "isoWeek" === t) ? (a = Math.trunc(Math.min(Math.max(0, a), 6)),
+            e.isoWeekday(a).startOf("day").valueOf()) : e.startOf(t).valueOf()
+        },
+        endOf: function(e, t) {
+            return (0,
+            r.default)(e).endOf(t).valueOf()
+        }
+    } : {});
+    var n = e.i(12713);
+    let d = e => {
+        if (!e)
+            return e;
+        for (let[t,a] of [[1, ""], [1e4, "만"], [1e8, "억"], [1e12, "조"]])
+            if (e < 1e4 * t || "조" === a)
+                return e /= t,
+                (e = (e = e < 10 ? e.toFixed(2) : e < 100 ? e.toFixed(1) : parseInt(e)) < 1e3 ? parseFloat(e) : e.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",")) + a
+    }
+    ;
+    function o({type: e, data: s, unit: i, meta: c, chartType: u="bar", color: _="#FCA600"}) {
+        let m = (0,
+        a.useRef)(null)
+          , f = (0,
+        a.useRef)(null)
+          , p = (0,
+        a.useRef)(null)
+          , h = (0,
+        a.useRef)(null)
+          , x = (0,
+        a.useRef)(null)
+          , y = (0,
+        a.useRef)(null)
+          , g = (0,
+        a.useRef)(null)
+          , [b,j] = (0,
+        a.useState)({})
+          , [v,k] = (0,
+        a.useState)({});
+        return (0,
+        a.useEffect)( () => {
+            let t = 0;
+            for (let e of s)
+                t < e.y && (t = e.y);
+            let a = {
+                clip: !1,
+                pointBorderWidth: 0,
+                pointRadius: 2.5,
+                pointHoverRadius: 0,
+                data: s,
+                backgroundColor: _,
+                borderColor: _
+            };
+            "line" === u && (a.borderWidth = 2);
+            let n = new l.default(m.current.getContext("2d"),{
+                type: u,
+                data: {
+                    datasets: [a]
+                },
+                options: {
+                    animation: !1,
+                    interaction: {
+                        mode: "x",
+                        intersect: !1
+                    },
+                    elements: {
+                        line: {
+                            tension: .2
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: !1
+                        },
+                        tooltip: {
+                            enabled: !1,
+                            external: function({tooltip: t, chart: a}) {
+                                if (0 !== t.opacity && t.dataPoints) {
+                                    let {dataIndex: l, element: n, parsed: o} = t.dataPoints[0];
+                                    if (null === o.y)
+                                        return;
+                                    k(v = c && {
+                                        x: s[l].x,
+                                        y: c.data[s[l].x]
+                                    });
+                                    let u = "minute" === e ? (0,
+                                    r.default)(s[l].x, "YYMMDDHHmm").diff((0,
+                                    r.default)(s[0].x, "YYMMDDHHmm"), "m") + "분" : "month" === e ? (0,
+                                    r.default)(s[l].x, "YYYYMM").format("YYYY년 MM월") : (0,
+                                    r.default)(o.x).format("M월 D일")
+                                      , _ = v && null != v.x ? c.format(c.data[v.x]) : ""
+                                      , m = d(o.y) + i;
+                                    if (x.current.innerText = u,
+                                    y.current.innerText = _,
+                                    g.current.innerText = m,
+                                    f.current.style.left = n.x + "px",
+                                    p.current.style.left = n.x - 5 + "px",
+                                    p.current.style.top = n.y - 5 + "px",
+                                    h.current.style.left = t.caretX - 50 + "px",
+                                    h.current.style.top = t.caretY + "px",
+                                    !f.current.style.opacity) {
+                                        f.current.style.top = a.chartArea.top + "px",
+                                        f.current.style.height = a.chartArea.height + "px",
+                                        f.current.style.opacity = 1,
+                                        p.current.style.opacity = 1,
+                                        h.current.style.opacity = 1;
+                                        let e = a.canvas.getBoundingClientRect();
+                                        b.left = e.left + window.pageXOffset + a.chartArea.left,
+                                        b.right = b.left + a.chartArea.width,
+                                        b.top = e.top + window.pageYOffset + a.chartArea.top,
+                                        b.bottom = b.top + a.chartArea.height,
+                                        j(b)
+                                    }
+                                }
+                            }
+                        },
+                        datalabels: {
+                            formatter: () => 5
+                        }
+                    },
+                    scales: {
+                        x: {
+                            type: "time",
+                            borderColor: "#A8A8A8",
+                            ticks: {
+                                color: "#A8A8A8",
+                                font: {
+                                    size: 11
+                                }
+                            },
+                            time: {
+                                parser: "minute" === e ? "YYMMDDHHmm" : "month" === e ? "YYYYMM" : "YYMMDD",
+                                stepSize: "month" === e ? 1 : s.length > 10 ? Math.ceil(s.length / 10) : 1,
+                                unit: e,
+                                displayFormats: {
+                                    minute: "HH:mm",
+                                    day: "MM.DD",
+                                    month: "MM월"
+                                }
+                            },
+                            grid: {
+                                display: !1
+                            },
+                            title: {
+                                display: !1
+                            }
+                        },
+                        y: {
+                            min: 0,
+                            max: t < 6 ? 5 : null,
+                            ticks: {
+                                count: 6,
+                                color: "#333333",
+                                font: {
+                                    size: 11,
+                                    weight: 500
+                                },
+                                callback: d
+                            },
+                            grid: {
+                                borderWidth: 0,
+                                color: "#F3F3F3"
+                            },
+                            title: {
+                                display: !1
+                            }
+                        }
+                    }
+                }
+            });
+            return () => {
+                k({}),
+                n.destroy()
+            }
+        }
+        , [s, c]),
+        (0,
+        a.useEffect)( () => {
+            let e = () => {
+                document.body.offsetWidth < 1e3 && (m.current.onclick = null)
+            }
+            ;
+            return window.addEventListener("resize", e),
+            () => window.removeEventListener("resize", e)
+        }
+        , []),
+        (0,
+        t.jsxs)("div", {
+            className: n.default.container,
+            onMouseLeave: () => {
+                f.current.style.opacity = null,
+                p.current.style.opacity = null,
+                h.current.style.opacity = null
+            }
+            ,
+            children: [(0,
+            t.jsx)("canvas", {
+                ref: m,
+                onMouseMove: ({pageX: e, pageY: t}) => {
+                    b.left && v && c && c.onClick && !(document.body.offsetWidth < 1e3) && (b.left <= e && e <= b.right && b.top <= t && t <= b.bottom ? (m.current.style.cursor = "pointer",
+                    m.current.onclick = e => c.onClick(v)) : (m.current.style.cursor = "default",
+                    m.current.onclick = null))
+                }
+            }), (0,
+            t.jsx)("div", {
+                ref: f,
+                className: n.default.bar
+            }), (0,
+            t.jsx)("div", {
+                ref: p,
+                className: n.default.dot
+            }), (0,
+            t.jsx)("div", {
+                ref: h,
+                className: n.default.tip_box,
+                children: (0,
+                t.jsxs)("div", {
+                    className: n.default.tip,
+                    children: [(0,
+                    t.jsx)("div", {
+                        ref: x,
+                        children: "18시 45분"
+                    }), (0,
+                    t.jsx)("div", {
+                        ref: y,
+                        children: "상품 7개"
+                    }), (0,
+                    t.jsx)("div", {
+                        ref: g,
+                        children: "151,123"
+                    })]
+                })
+            })]
+        })
+    }
+    e.s(["default", 0, o], 17525),
+    e.s(["default", 0, function(e) {
+        return (0,
+        t.jsx)(o, {
+            chartType: "bar",
+            color: "#FCA600",
+            ...e
+        })
+    }
+    ], 25733)
+}
+, 6668, e => {
+    e.v({
+        age: "DemoGraph-module__0Y4lQG__age",
+        centered: "DemoGraph-module__0Y4lQG__centered",
+        container: "DemoGraph-module__0Y4lQG__container",
+        float: "DemoGraph-module__0Y4lQG__float",
+        legend: "DemoGraph-module__0Y4lQG__legend",
+        main: "DemoGraph-module__0Y4lQG__main",
+        sex: "DemoGraph-module__0Y4lQG__sex"
+    })
+}
+, 54546, e => {
+    "use strict";
+    var t = e.i(91398)
+      , a = e.i(50349)
+      , l = e.i(6668)
+      , r = e.i(91788)
+      , s = e.i(7611);
+    let i = ({title: e="인구통계", centered: i, demographics: {sex: n, age: d}}) => {
+        let o = (0,
+        r.useRef)(null);
+        (0,
+        r.useEffect)( () => {
+            let e = new s.default(o.current.getContext("2d"),{
+                type: "doughnut",
+                data: {
+                    datasets: [{
+                        data: [n.f, n.m],
+                        cutout: "66.6%",
+                        backgroundColor: ["#FF693B", "#1D71FF"],
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    animation: !1,
+                    plugins: {
+                        legend: {
+                            display: !1
+                        },
+                        tooltip: {
+                            enabled: !1
+                        }
+                    }
+                }
+            });
+            return () => e.destroy()
+        }
+        , [n, d]);
+        let c = Math.abs(50 - n.m)
+          , u = Math.abs(50 - n.f)
+          , _ = {
+            left: `calc(${c}% - ${10 + c / 3.14}px)`,
+            top: `calc(${n.m}% - ${(50 - n.m) / 3.14}px - 14px)`
+        }
+          , m = {
+            right: `calc(${u}% - ${10 + u / 3.14}px)`,
+            top: `calc(${n.f}% - ${(50 - n.f) / 3.14}px - 14px)`
+        }
+          , f = 0
+          , p = 0;
+        for (let e in d)
+            d[e] > f ? (p = f,
+            f = d[e]) : d[e] > p && (p = d[e]);
+        return (0,
+        t.jsxs)("div", {
+            className: `${a.default.container} ${l.default.container}`,
+            children: [(0,
+            t.jsx)("div", {
+                className: a.default.title,
+                children: e
+            }), (0,
+            t.jsxs)("div", {
+                className: `${l.default.main} ${i ? l.default.centered : ""}`,
+                children: [(0,
+                t.jsxs)("div", {
+                    className: l.default.sex,
+                    children: [(0,
+                    t.jsx)("h4", {
+                        children: "여성, 남성"
+                    }), (0,
+                    t.jsx)("canvas", {
+                        ref: o
+                    }), (0,
+                    t.jsxs)("div", {
+                        className: l.default.float,
+                        children: [(0,
+                        t.jsxs)("span", {
+                            style: _,
+                            children: [n.m, "%"]
+                        }), (0,
+                        t.jsxs)("span", {
+                            style: m,
+                            children: [n.f, "%"]
+                        })]
+                    }), (0,
+                    t.jsxs)("div", {
+                        className: l.default.legend,
+                        children: [(0,
+                        t.jsxs)("h5", {
+                            children: [(0,
+                            t.jsx)("i", {}), "남성"]
+                        }), (0,
+                        t.jsxs)("h5", {
+                            children: [(0,
+                            t.jsx)("i", {}), "여성"]
+                        })]
+                    })]
+                }), (0,
+                t.jsxs)("div", {
+                    children: [(0,
+                    t.jsx)("h4", {
+                        children: "연령별"
+                    }), (0,
+                    t.jsx)("div", {
+                        className: l.default.age,
+                        children: Array(6).fill(0).map( (e, a) => {
+                            let l = d[a + 1]
+                              , r = l === f ? 1 : l === p ? 2 : "";
+                            return (0,
+                            t.jsxs)("div", {
+                                children: [(0,
+                                t.jsx)("span", {}), (0,
+                                t.jsx)("span", {
+                                    style: {
+                                        height: l + "px",
+                                        background: 1 === r ? "#FCA600" : 2 === r ? "#FFCD3E" : "#E0E0E0"
+                                    },
+                                    children: r
+                                }), (0,
+                                t.jsxs)("h5", {
+                                    style: r ? {
+                                        color: "#212121",
+                                        fontWeight: 500
+                                    } : {},
+                                    children: [a + 1, "0대"]
+                                })]
+                            }, "bar" + a)
+                        }
+                        )
+                    })]
+                })]
+            })]
+        })
+    }
+    ;
+    i.displayName = "DemoGraph",
+    e.s(["default", 0, i])
+}
+, 75244, e => {
+    "use strict";
+    var t = e.i(91398)
+      , a = e.i(45246)
+      , l = e.i(50349)
+      , r = e.i(3828)
+      , s = e.i(41158);
+    e.i(68770);
+    var i = e.i(40002);
+    let n = ({title: e, tooltip: n}) => ((0,
+    r.useRouter)(),
+    (0,
+    t.jsxs)("div", {
+        className: "jsx-d4d5ec988fd14910 " + (l.default.container || ""),
+        children: [(0,
+        t.jsx)(i.default, {
+            title: e,
+            tooltip: n
+        }), (0,
+        t.jsxs)("div", {
+            className: "jsx-d4d5ec988fd14910 lock",
+            children: [(0,
+            t.jsx)("img", {
+                src: "/__modules/Graph/lock.svg",
+                alt: "lock",
+                className: "jsx-d4d5ec988fd14910"
+            }), (0,
+            t.jsx)(s.default, {
+                href: "/user/sign_in",
+                className: "link",
+                children: "로그인하기"
+            })]
+        }), (0,
+        t.jsx)(a.default, {
+            id: "d4d5ec988fd14910",
+            children: ".lock.jsx-d4d5ec988fd14910{text-align:center;width:100px;position:absolute;top:calc(50% - 48px);left:calc(50% - 50px)}.lock.jsx-d4d5ec988fd14910 .link{color:#fca600;text-align:center;cursor:pointer;background:#fff;border:1px solid #fca600;border-radius:4px;justify-content:center;align-items:center;width:100px;height:36px;margin-top:20px;font-size:14px;font-weight:500;display:flex}"
+        })]
+    }));
+    n.displayName = "LockedGraph",
+    e.s(["default", 0, n])
+}
+, 68770, e => {
+    "use strict";
+    let t = [];
+    window.addEventListener("message", e => {
+        if (["https://accounts.labangba.com", "https://accounts.ecomm-data.com"].includes(e.origin)) {
+            for (let e of t)
+                e.close();
+            t = [],
+            window.location.reload()
+        }
+    }
+    ),
+    e.s([])
+}
+, 48391, e => {
+    "use strict";
+    var t = e.i(91398)
+      , a = e.i(45246);
+    let l = ({onClick: e, invertColor: l}) => (0,
+    t.jsxs)(t.Fragment, {
+        children: [(0,
+        t.jsx)("button", {
+            onClick: e,
+            className: a.default.dynamic([["38f84cb141c3075c", [l ? "url('/__modules/Popup/close_inverted.svg')" : "url('/__modules/Popup/close_icon.svg')"]]]) + " exit"
+        }), (0,
+        t.jsx)(a.default, {
+            id: "38f84cb141c3075c",
+            dynamic: [l ? "url('/__modules/Popup/close_inverted.svg')" : "url('/__modules/Popup/close_icon.svg')"],
+            children: `button.exit.__jsx-style-dynamic-selector{background:${l ? "url('/__modules/Popup/close_inverted.svg')" : "url('/__modules/Popup/close_icon.svg')"};cursor:pointer;border:none;width:20px;height:20px;position:absolute;top:20px;right:20px}@media screen and (width<=999px){button.exit.__jsx-style-dynamic-selector{background:url(/__modules/Popup/close_icon.svg)}}`
+        })]
+    });
+    l.displayName = "PopupExit",
+    e.s(["default", 0, l])
+}
+, 53275, e => {
+    "use strict";
+    var t = e.i(99523)
+      , a = e.i(98368);
+    let l = e => !!(e && (e.voucher || e.plan?.status || e.newbie))
+      , r = {
+        QUOTA_EXCEEDED: "quota_exceeded",
+        PERIOD_RESTRICTED: "period_restricted",
+        LIST_INTERACTION: "list_interaction"
+    }
+      , s = {
+        "1w": 1,
+        "1m": 1,
+        "3m": 3,
+        "6m": 6,
+        "1y": 12,
+        "20y": 240
+    };
+    e.s(["FREE_DAILY_LIMITS", 0, {
+        search: 3,
+        detail: 5
+    }, "FREE_LIST_TOP_OPEN", 0, 10, "FREE_LOOKBACK_MONTHS", 0, 3, "LIMIT_QUERY_KEY", 0, "limit", "LIMIT_REASON", 0, r, "blockIfFreeListInteraction", 0, () => {
+        let {user: e, setPopup: t, setLimit: s} = a.default.getState();
+        return !l(e) && (e ? s(402, r.LIST_INTERACTION) : t({
+            title: "알림",
+            body: "더 많은 데이터를 조회하시려면, 로그인해주세요."
+        }),
+        !0)
+    }
+    , "blockIfPeriodRestricted", 0, ({date: e, period: i}={}) => {
+        let {user: n, setLimit: d} = a.default.getState();
+        return !l(n) && (!!(e => {
+            if (!e)
+                return !1;
+            let a = String(e);
+            6 === a.length ? a = "20" + a : a.length > 8 && (a = a.slice(0, 8));
+            let l = (0,
+            t.default)(a, "YYYYMMDD", !0);
+            return !!l.isValid() && l.isBefore((0,
+            t.default)().subtract(3, "M").startOf("d"))
+        }
+        )(e) || (s[i] ?? 0) > 3) && (d(402, r.PERIOD_RESTRICTED),
+        !0)
+    }
+    , "isPaidUser", 0, l])
+}
+, 91679, e => {
+    "use strict";
+    var t = e.i(91398)
+      , a = e.i(45246)
+      , l = e.i(41365)
+      , r = e.i(48391)
+      , s = e.i(98922)
+      , i = e.i(828)
+      , n = e.i(53275);
+    let d = [[`검색 / 일 ${n.FREE_DAILY_LIMITS.search}회 제한`, "검색 / 무제한"], [`섹션별 리스트 조회 / 최대 ${n.FREE_LIST_TOP_OPEN}개 제한`, "섹션별 리스트 조회 / 무제한"], [`상세 페이지 조회 / 일 ${n.FREE_DAILY_LIMITS.detail}회 제한`, "상세 페이지 조회 / 무제한"], [`최근 ${n.FREE_LOOKBACK_MONTHS}개월 데이터 검색 및 조회`, "전체 기간 데이터 검색 및 조회"], ["검색 결과, 방송 목록 엑셀 다운로드 X", "검색 결과, 방송 목록 엑셀 다운로드 O"], ["과거 편성표 조회 X", "과거 편성표 조회 O"], ["공동구매 채널분석 기능 미제공", "공동구매 채널분석 기능 제공"]];
+    function o() {
+        return (0,
+        t.jsxs)(t.Fragment, {
+            children: [(0,
+            t.jsxs)("table", {
+                className: "jsx-74b4df222367540e table",
+                children: [(0,
+                t.jsx)("thead", {
+                    className: "jsx-74b4df222367540e",
+                    children: (0,
+                    t.jsxs)("tr", {
+                        className: "jsx-74b4df222367540e tableHead",
+                        children: [(0,
+                        t.jsx)("th", {
+                            className: "jsx-74b4df222367540e free",
+                            children: "무료 요금제"
+                        }), (0,
+                        t.jsx)("th", {
+                            className: "jsx-74b4df222367540e paid",
+                            children: "비즈니스 요금제"
+                        })]
+                    })
+                }), (0,
+                t.jsx)("tbody", {
+                    className: "jsx-74b4df222367540e",
+                    children: d.map( ([e,a], l) => {
+                        let r = l === d.length - 1;
+                        return (0,
+                        t.jsxs)("tr", {
+                            className: "jsx-74b4df222367540e tableBody",
+                            children: [(0,
+                            t.jsx)("td", {
+                                className: `jsx-74b4df222367540e free${r ? " round_left" : ""}`,
+                                children: e
+                            }), (0,
+                            t.jsx)("td", {
+                                className: `jsx-74b4df222367540e paid${r ? " round_right" : ""}`,
+                                children: a
+                            })]
+                        }, l)
+                    }
+                    )
+                })]
+            }), (0,
+            t.jsx)(a.default, {
+                id: "74b4df222367540e",
+                children: ".table.jsx-74b4df222367540e{border-spacing:0;border-radius:8px;margin:0 0 24px;padding:0}.tableHead.jsx-74b4df222367540e{color:#333;font-size:14px;font-weight:700}.tableHead.jsx-74b4df222367540e>.free.jsx-74b4df222367540e{background:#e8e8e8;border-radius:8px 0 0;padding:8px 0}.tableHead.jsx-74b4df222367540e>.paid.jsx-74b4df222367540e{background:#ffcd3e;border-radius:0 8px 0 0;padding:8px 0}.paid.jsx-74b4df222367540e,.free.jsx-74b4df222367540e{width:280px}.tableBody.jsx-74b4df222367540e{color:#333;text-align:center;font-size:14px;font-weight:400}.tableBody.jsx-74b4df222367540e>.free.jsx-74b4df222367540e{background:#f8f8f8;padding:8px 0}.tableBody.jsx-74b4df222367540e>.round_left.jsx-74b4df222367540e{border-radius:0 0 0 8px}.tableBody.jsx-74b4df222367540e>.paid.jsx-74b4df222367540e{background:#fffbf0;padding:8px 0}.tableBody.jsx-74b4df222367540e>.round_right.jsx-74b4df222367540e{border-radius:0 0 8px}"
+            })]
+        })
+    }
+    var c = e.i(3828);
+    let u = {
+        paywall: {
+            title: "비즈니스 요금제 기능",
+            lines: ["해당 기능은 비즈니스 요금제 이상 회원만 이용할 수 있습니다", "비즈니스 요금제와 함께 더욱 강력한 기능을 누려보세요"]
+        },
+        usage_limit: {
+            title: "요금제 사용량 초과",
+            lines: [`무료 요금제의 일간 사용량 또는 최근 ${n.FREE_LOOKBACK_MONTHS}개월 조회 권한을 초과하였습니다`, "비즈니스 요금제와 함께 더욱 강력한 기능을 누려보세요"]
+        }
+    };
+    e.s(["default", 0, function({type: e="usage_limit", onClose: n}) {
+        let d = (0,
+        c.useRouter)()
+          , _ = u[e] || u.usage_limit;
+        return (0,
+        t.jsxs)(t.Fragment, {
+            children: [(0,
+            t.jsxs)(l.default, {
+                width: "592px",
+                onCancel: n,
+                children: [(0,
+                t.jsx)(r.default, {
+                    onClick: n
+                }), (0,
+                t.jsxs)("div", {
+                    className: "jsx-a8e866fcb7b0a74e popupWrap",
+                    children: [(0,
+                    t.jsxs)("div", {
+                        className: "jsx-a8e866fcb7b0a74e notice",
+                        children: [(0,
+                        t.jsx)("h4", {
+                            className: "jsx-a8e866fcb7b0a74e title",
+                            children: _.title
+                        }), (0,
+                        t.jsx)("div", {
+                            className: "jsx-a8e866fcb7b0a74e contentWrap",
+                            children: _.lines.map(e => (0,
+                            t.jsx)("p", {
+                                className: "jsx-a8e866fcb7b0a74e",
+                                children: e
+                            }, e))
+                        })]
+                    }), (0,
+                    t.jsx)(o, {}), (0,
+                    t.jsxs)("div", {
+                        className: "jsx-a8e866fcb7b0a74e buttons",
+                        children: [(0,
+                        t.jsx)(s.default, {
+                            text: "닫기",
+                            onClick: n
+                        }), (0,
+                        t.jsx)(i.default, {
+                            text: "요금제",
+                            onClick: () => {
+                                n(),
+                                d.push("/plan")
+                            }
+                        })]
+                    })]
+                })]
+            }), (0,
+            t.jsx)(a.default, {
+                id: "a8e866fcb7b0a74e",
+                children: ".buttons.jsx-a8e866fcb7b0a74e{justify-content:center;gap:8px;display:flex}.notice.jsx-a8e866fcb7b0a74e{flex-direction:column;align-items:center;gap:16px;margin-bottom:16px;display:flex}.title.jsx-a8e866fcb7b0a74e{color:#212121;text-align:center;align-self:stretch;font-size:16px;font-weight:700}.contentWrap.jsx-a8e866fcb7b0a74e{color:#333;text-align:center;flex-direction:column;gap:8px;font-size:15px;font-weight:400;display:flex}"
+            })]
+        })
+    }
+    ], 91679)
+}
+, 94182, (e, t, a) => {
+    t.exports = e.r(61457)
+}
+, 46453, (e, t, a) => {
+    !function(t, a) {
+        if ("function" == typeof define && define.amd) {
+            let t;
+            void 0 !== (t = a()) && e.v(t)
+        } else
+            a()
+    }(e.e, function() {
+        "use strict";
+        function a(e, t, a) {
+            var l = new XMLHttpRequest;
+            l.open("GET", e),
+            l.responseType = "blob",
+            l.onload = function() {
+                n(l.response, t, a)
+            }
+            ,
+            l.onerror = function() {
+                console.error("could not download file")
+            }
+            ,
+            l.send()
+        }
+        function l(e) {
+            var t = new XMLHttpRequest;
+            t.open("HEAD", e, !1);
+            try {
+                t.send()
+            } catch (e) {}
+            return 200 <= t.status && 299 >= t.status
+        }
+        function r(e) {
+            try {
+                e.dispatchEvent(new MouseEvent("click"))
+            } catch (a) {
+                var t = document.createEvent("MouseEvents");
+                t.initMouseEvent("click", !0, !0, window, 0, 0, 0, 80, 20, !1, !1, !1, !1, 0, null),
+                e.dispatchEvent(t)
+            }
+        }
+        var s = "object" == typeof window && window.window === window ? window : "object" == typeof self && self.self === self ? self : e.g.global === e.g ? e.g : void 0
+          , i = s.navigator && /Macintosh/.test(navigator.userAgent) && /AppleWebKit/.test(navigator.userAgent) && !/Safari/.test(navigator.userAgent)
+          , n = s.saveAs || ("object" != typeof window || window !== s ? function() {}
+        : "download" in HTMLAnchorElement.prototype && !i ? function(e, t, i) {
+            var n = s.URL || s.webkitURL
+              , d = document.createElement("a");
+            d.download = t = t || e.name || "download",
+            d.rel = "noopener",
+            "string" == typeof e ? (d.href = e,
+            d.origin === location.origin ? r(d) : l(d.href) ? a(e, t, i) : r(d, d.target = "_blank")) : (d.href = n.createObjectURL(e),
+            setTimeout(function() {
+                n.revokeObjectURL(d.href)
+            }, 4e4),
+            setTimeout(function() {
+                r(d)
+            }, 0))
+        }
+        : "msSaveOrOpenBlob" in navigator ? function(e, t, s) {
+            if (t = t || e.name || "download",
+            "string" != typeof e) {
+                var i;
+                navigator.msSaveOrOpenBlob((void 0 === (i = s) ? i = {
+                    autoBom: !1
+                } : "object" != typeof i && (console.warn("Deprecated: Expected third argument to be a object"),
+                i = {
+                    autoBom: !i
+                }),
+                i.autoBom && /^\s*(?:text\/\S*|application\/xml|\S*\/\S*\+xml)\s*;.*charset\s*=\s*utf-8/i.test(e.type) ? new Blob(["\uFEFF", e],{
+                    type: e.type
+                }) : e), t)
+            } else if (l(e))
+                a(e, t, s);
+            else {
+                var n = document.createElement("a");
+                n.href = e,
+                n.target = "_blank",
+                setTimeout(function() {
+                    r(n)
+                })
+            }
+        }
+        : function(e, t, l, r) {
+            if ((r = r || open("", "_blank")) && (r.document.title = r.document.body.innerText = "downloading..."),
+            "string" == typeof e)
+                return a(e, t, l);
+            var n = "application/octet-stream" === e.type
+              , d = /constructor/i.test(s.HTMLElement) || s.safari
+              , o = /CriOS\/[\d]+/.test(navigator.userAgent);
+            if ((o || n && d || i) && "u" > typeof FileReader) {
+                var c = new FileReader;
+                c.onloadend = function() {
+                    var e = c.result;
+                    e = o ? e : e.replace(/^data:[^;]*;/, "data:attachment/file;"),
+                    r ? r.location.href = e : location = e,
+                    r = null
+                }
+                ,
+                c.readAsDataURL(e)
+            } else {
+                var u = s.URL || s.webkitURL
+                  , _ = u.createObjectURL(e);
+                r ? r.location = _ : location.href = _,
+                r = null,
+                setTimeout(function() {
+                    u.revokeObjectURL(_)
+                }, 4e4)
+            }
+        }
+        );
+        s.saveAs = n.saveAs = n,
+        t.exports = n
+    })
+}
+, 13141, e => {
+    e.v({
+        excel: "TableOption-module__W0X17a__excel",
+        frame: "TableOption-module__W0X17a__frame"
+    })
+}
+, 22004, e => {
+    "use strict";
+    var t = e.i(91398)
+      , a = e.i(13141)
+      , l = e.i(56992)
+      , r = e.i(91788)
+      , s = e.i(98368)
+      , i = e.i(17653)
+      , n = e.i(85368)
+      , d = e.i(45246)
+      , o = e.i(14940);
+    let c = ({text: e, type: a, disabled: l, onClick: s, design: i=3, iconPath: n}) => {
+        let[c,u] = (0,
+        r.useState)(0);
+        return (0,
+        r.useEffect)( () => {
+            switch (i) {
+            case 0:
+                u(o.default.first);
+                break;
+            case 1:
+                u(o.default.second);
+                break;
+            case 2:
+                u(o.default.third);
+                break;
+            case 3:
+                u(o.default.fourth);
+                break;
+            case 10:
+                u(o.default.mobile);
+                break;
+            case 11:
+                u(o.default.mobileSecond)
+            }
+        }
+        , [c]),
+        (0,
+        t.jsxs)(t.Fragment, {
+            children: [(0,
+            t.jsxs)("button", {
+                onClick: s,
+                disabled: l,
+                style: n ? {
+                    display: "flex",
+                    alignItems: "center"
+                } : {},
+                className: `jsx-26d9f463356f0671 ${o.default.default} ${c}`,
+                children: [n && (0,
+                t.jsx)("img", {
+                    src: n,
+                    alt: "icon",
+                    style: {
+                        marginRight: "4px"
+                    },
+                    className: "jsx-26d9f463356f0671"
+                }), e, (0,
+                t.jsx)("div", {
+                    className: "jsx-26d9f463356f0671 biz",
+                    children: "비즈"
+                })]
+            }), (0,
+            t.jsx)(d.default, {
+                id: "26d9f463356f0671",
+                children: ".biz.jsx-26d9f463356f0671{color:#fca600;background:#fca60033;border-radius:8px;justify-content:center;align-items:center;gap:10px;margin-left:8px;padding:0 8px;font-size:14px;font-weight:400;display:flex}"
+            })]
+        })
+    }
+    ;
+    c.displayName = "ButtonFakeDownload";
+    var u = e.i(91679)
+      , _ = e.i(94182)
+      , m = e.i(53275)
+      , f = e.i(47002)
+      , p = e.i(99523)
+      , h = e.i(81371)
+      , x = e.i(46453);
+    async function y({cols: e, rows: t, file_name: a, sheet_name: l}) {
+        let r = new ExcelJS.Workbook
+          , s = r.addWorksheet(l);
+        s.columns = e,
+        s.addRows(t),
+        ["visit_cnt", "sales_cnt", "sales_amt", "product_cnt", "price", "price_sales", "labang_price", "delivery_fee", "labang_delivery_fee"].forEach(e => {
+            let t = s.getColumnKey(e);
+            t && (t.alignment = {
+                horizontal: "right"
+            },
+            t.numFmt = "###,#")
+        }
+        );
+        let i = s.getColumnKey("time_start");
+        i && (i.alignment = {
+            horizontal: "right"
+        }),
+        s.getRow(1).eachCell(e => {
+            e.font = {
+                bold: !0
+            },
+            e.alignment = {
+                horizontal: "center"
+            },
+            e.fill = {
+                type: "pattern",
+                pattern: "solid",
+                fgColor: {
+                    argb: "fbbc04"
+                }
+            }
+        }
+        );
+        let n = await r.xlsx.writeBuffer();
+        (0,
+        x.saveAs)(new Blob([n]), a + ".xlsx")
+    }
+    var g = e.i(25838);
+    async function b({cats: e, list: t, replay_url_map: a}) {
+        let l = [{
+            header: "플랫폼",
+            key: "platform"
+        }, {
+            header: "방송명",
+            key: "title"
+        }, {
+            header: "분류",
+            key: "cat1"
+        }, {
+            header: "카테고리",
+            key: "cat2"
+        }, {
+            header: "방송일자",
+            key: "date_start"
+        }, {
+            header: "요일",
+            key: "week_day"
+        }, {
+            header: "방송시작시간",
+            key: "time_start"
+        }, {
+            header: "조회수",
+            key: "visit_cnt"
+        }, {
+            header: "판매량",
+            key: "sales_cnt"
+        }, {
+            header: "매출액",
+            key: "sales_amt"
+        }, {
+            header: "상품수",
+            key: "product_cnt",
+            alignment: {
+                horizontal: "right"
+            }
+        }, {
+            header: "방송정보URL",
+            key: "url_info"
+        }, {
+            header: "방송다시보기",
+            key: "url_replay"
+        }];
+        l = l.map(e => ({
+            ...e,
+            width: 15
+        }));
+        let r = t.map(t => {
+            let l = e[t.cid]
+              , r = e[l?.pid]
+              , s = r?.name || l?.name || ""
+              , i = r ? l.name : ""
+              , n = t.datetime_start.toString()
+              , d = `20${n.slice(0, 2)}-${n.slice(2, 4)}-${n.slice(4, 6)}`
+              , o = n.slice(6, 8) + ":" + n.slice(8);
+            return {
+                platform: f.default?.[t.platform_id]?.name ?? "",
+                title: t.title ?? "",
+                cat1: s,
+                cat2: i,
+                date_start: d,
+                week_day: (0,
+                h.convert_ko_day)((0,
+                p.default)(d, "YYYY-MM-DD").day()),
+                time_start: o,
+                visit_cnt: null != t.visit_cnt ? t.visit_cnt : "",
+                sales_cnt: null != t.sales_cnt ? t.sales_cnt : "",
+                sales_amt: null != t.sales_amt ? t.sales_amt : "",
+                product_cnt: null != t.product_cnt ? t.product_cnt.toString() : "",
+                url_info: `${window.location.origin}/report/labang/${t.objectID}`,
+                url_replay: a[t.objectID] ?? ""
+            }
+        }
+        );
+        await y({
+            file_name: "liveshopping " + (0,
+            p.default)().format("DDHHmm"),
+            sheet_name: "liveshopping list",
+            cols: l,
+            rows: r
+        })
+    }
+    async function j({list: e}) {
+        let t = [{
+            header: "플랫폼",
+            key: "platform"
+        }, {
+            header: "방송명",
+            key: "title"
+        }, {
+            header: "분류",
+            key: "cat_name"
+        }, {
+            header: "카테고리",
+            key: "cid_name"
+        }, {
+            header: "방송일자",
+            key: "date_start"
+        }, {
+            header: "요일",
+            key: "week_day"
+        }, {
+            header: "방송시작시간",
+            key: "time_start"
+        }, {
+            header: "판매량",
+            key: "sales_cnt"
+        }, {
+            header: "매출액",
+            key: "sales_amt"
+        }, {
+            header: "상품수",
+            key: "item_cnt",
+            alignment: {
+                horizontal: "right"
+            }
+        }];
+        t = t.map(e => ({
+            ...e,
+            width: 15
+        }));
+        let a = e.map(e => {
+            let t = e.hsshow_datetime_start.toString()
+              , a = `${t.slice(0, 4)}-${t.slice(4, 6)}-${t.slice(6, 8)}`
+              , l = t.slice(8, 10) + ":" + t.slice(10);
+            return {
+                platform: f.default[e.platform_id].name ?? "",
+                title: e.hsshow_title ?? "",
+                cat_name: e.cat?.cat_name ?? "",
+                cid_name: e.cat?.cid_name ? e.cat?.cid_name : e.cat?.cat_name && !e.cat?.cid_name ? "전체" : "",
+                date_start: a,
+                week_day: (0,
+                h.convert_ko_day)((0,
+                p.default)(a, "YYYY-MM-DD").day()),
+                time_start: l,
+                sales_cnt: null != e.sales_cnt ? e.sales_cnt : "",
+                sales_amt: null != e.sales_amt ? e.sales_amt : "",
+                item_cnt: null != e.item_cnt ? e.item_cnt.toString() : ""
+            }
+        }
+        )
+          , l = e[0].cat?.cid_name;
+        e.map(e => {
+            l !== e.cat?.cid_name ? l = "전체" : e.cat?.cid_name || (l = "전체")
+        }
+        ),
+        await y({
+            file_name: `hsshow_${e[0].cat?.cat_name + "_"}${l + "_"}${(0,
+            p.default)().format("DDHHmm")}`,
+            sheet_name: "hsshow list",
+            cols: t,
+            rows: a
+        })
+    }
+    async function v({list: e}) {
+        let t = [{
+            header: "공구상태",
+            key: "status"
+        }, {
+            header: "시작일",
+            key: "started_at"
+        }, {
+            header: "종료일자",
+            key: "ended_at"
+        }, {
+            header: "모니터링상태",
+            key: "monitoring_status"
+        }, {
+            header: "플랫폼",
+            key: "platform"
+        }, {
+            header: "판매채널(인스타ID)",
+            key: "channel"
+        }, {
+            header: "상품명",
+            key: "product_name"
+        }, {
+            header: "분류",
+            key: "cat1"
+        }, {
+            header: "카테고리",
+            key: "cat2"
+        }, {
+            header: "정가(원)",
+            key: "price"
+        }, {
+            header: "판매가(원)",
+            key: "sales_price"
+        }, {
+            header: "판매량",
+            key: "sales_count"
+        }, {
+            header: "매출액",
+            key: "sales_amount"
+        }, {
+            header: "판매URL",
+            key: "product_url"
+        }, {
+            header: "썸네일URL",
+            key: "product_thumbnail_url"
+        }];
+        t = t.map(e => ({
+            ...e,
+            width: 15
+        }));
+        let a = e.map(e => {
+            let t = e.groupbuy ?? {};
+            return {
+                status: t.is_active ? "진행중" : "종료",
+                started_at: t.started_at ? (0,
+                p.default)(t.started_at).format("YYYY-MM-DD") : "",
+                ended_at: t.ended_at ? (0,
+                p.default)(t.ended_at).format("YYYY-MM-DD") : "",
+                monitoring_status: t.is_monitoring ? null != t.tracking_sales_hours ? `${t.tracking_sales_hours}시간` : "모니터링 중" : "종료",
+                platform: t.platform ? (0,
+                g.platformLabel)(t.platform) : "",
+                channel: t.insta_account_username ? `@${t.insta_account_username}` : "",
+                product_name: t.product_name ?? "",
+                cat1: t.category_parent_name ?? "",
+                cat2: t.category_name ?? "",
+                price: null != t.price ? t.price : "",
+                sales_price: t.sales_price ?? t.price ?? "",
+                sales_count: null != t.sales_count ? t.sales_count : "",
+                sales_amount: null != t.sales_amount ? t.sales_amount : "",
+                product_url: t.product_url ?? "",
+                product_thumbnail_url: t.product_thumbnail_url ?? ""
+            }
+        }
+        );
+        await y({
+            file_name: "groupbuy " + (0,
+            p.default)().format("DDHHmm"),
+            sheet_name: "groupbuy list",
+            cols: t,
+            rows: a
+        })
+    }
+    async function k({type: e, list: t}) {
+        let a = []
+          , l = []
+          , r = "product_";
+        switch (e) {
+        case "labang":
+            a = [{
+                header: "플랫폼",
+                key: "platform",
+                width: 20
+            }, {
+                header: "상품명",
+                key: "title",
+                width: 20
+            }, {
+                header: "정가",
+                key: "price",
+                width: 20
+            }, {
+                header: "판매가",
+                key: "price_sales",
+                width: 20
+            }, {
+                header: "라이브가",
+                key: "labang_price",
+                width: 20
+            }, {
+                header: "배송비",
+                key: "delivery_fee",
+                width: 20
+            }, {
+                header: "라이브배송비",
+                key: "labang_delivery_fee",
+                width: 20
+            }, {
+                header: "판매량",
+                key: "sales_cnt",
+                width: 20
+            }, {
+                header: "매출액",
+                key: "sales_amt",
+                width: 20
+            }, {
+                header: "상품URL",
+                key: "product_url",
+                width: 20
+            }],
+            l = t.map(e => ({
+                platform: f.default[e.platform_id].name ?? "",
+                title: e.title,
+                price: e.price,
+                price_sales: e.price_sales,
+                labang_price: e.labang_price ?? e.price_sales ?? e.price,
+                delivery_fee: null != e.delivery_fee ? e.delivery_fee : "",
+                labang_delivery_fee: null != e.labang_delivery_fee ? e.labang_delivery_fee : "",
+                sales_cnt: null != e.sales_cnt ? e.sales_cnt : "",
+                sales_amt: null != e.sales_amt ? e.sales_amt : "",
+                product_url: e.product_url ?? ""
+            })),
+            r += (0,
+            p.default)().format("DDHHmm");
+            break;
+        case "hsshow":
+            a = [{
+                header: "플랫폼",
+                key: "platform",
+                width: 20
+            }, {
+                header: "상품명",
+                key: "item_name",
+                width: 20
+            }, {
+                header: "분류",
+                key: "pid_name",
+                width: 20
+            }, {
+                header: "카테고리",
+                key: "cid_name",
+                width: 20
+            }, {
+                header: "정가",
+                key: "price",
+                width: 20
+            }, {
+                header: "판매가",
+                key: "price_sales",
+                width: 20
+            }, {
+                header: "라이브가",
+                key: "live_price",
+                width: 20
+            }, {
+                header: "배송비",
+                key: "delivery_fee",
+                width: 20
+            }, {
+                header: "판매량",
+                key: "sales_cnt",
+                width: 20
+            }, {
+                header: "매출액",
+                key: "sales_amt",
+                width: 20
+            }, {
+                header: "상품URL",
+                key: "item_url",
+                width: 20
+            }],
+            l = t.map(e => ({
+                platform: e.platform_name,
+                item_name: e.item_name,
+                pid_name: e.pid_name,
+                cid_name: e.cid_name,
+                price: e.price,
+                price_sales: e.price_sales,
+                live_price: e.labang_price ?? e.price_sales ?? e.price,
+                delivery_fee: null != e.delivery_fee ? e.delivery_fee : "",
+                sales_cnt: null != e.sales_cnt ? e.sales_cnt : "",
+                sales_amt: null != e.sales_amt ? e.sales_amt : "",
+                item_url: e.item_url ?? ""
+            }));
+            let s = t[0]?.cid_name;
+            t.map(e => {
+                s !== e?.cid_name ? s = "전체" : e?.cid_name || (s = "전체")
+            }
+            ),
+            r += `${t[0].pid_name + "_"}${s + "_"}${(0,
+            p.default)().format("DDHHmm")}`
+        }
+        await y({
+            file_name: r,
+            sheet_name: "product list",
+            cols: a,
+            rows: l
+        })
+    }
+    let w = [{
+        label: "10개씩 보기",
+        value: 10
+    }, {
+        label: "25개씩 보기",
+        value: 25
+    }, {
+        label: "50개씩 보기",
+        value: 50
+    }, {
+        label: "100개씩 보기",
+        value: 100
+    }];
+    e.s(["default", 0, function({excel: e, onChangeCount: d}) {
+        let {cats: o, Fetch: f, user: p, setPopup: h, setLoading: x} = (0,
+        s.default)((0,
+        i.useShallow)(e => ({
+            cats: e.cats,
+            Fetch: e.Fetch,
+            user: e.user,
+            setPopup: e.setPopup,
+            setLoading: e.setLoading
+        })))
+          , [y,g] = (0,
+        r.useState)(!1)
+          , N = (0,
+        r.useRef)()
+          , Y = (0,
+        r.useRef)({})
+          , M = (0,
+        r.useRef)()
+          , $ = (0,
+        r.useMemo)( () => !!e && (0,
+        m.isPaidUser)(p), [e, p])
+          , F = async () => {
+            let t, a, l = {
+                ...e.params || {},
+                page: 1,
+                size: 1e4
+            }, r = "";
+            switch (e.type) {
+            case "labang_product":
+                r = "/labang/products";
+                break;
+            case "hsshow":
+                for (let e of (r = "/search2/show",
+                t = Object.keys(l.order),
+                a = [],
+                t))
+                    l.order[e] && a.push(`${e}/${l.order[e]}`);
+                l.order = a,
+                l.type = 2;
+                break;
+            case "hsshow_product":
+                for (let e of (r = "/hsshow/items",
+                t = Object.keys(l.order),
+                a = [],
+                t))
+                    l.order[e] && a.push(`${e}/${l.order[e]}`);
+                l.order = a,
+                l.size = 100;
+                break;
+            case "cat_hsshow_product":
+                for (let e of (r = "/search2/hsshow_item",
+                t = Object.keys(l.order),
+                a = [],
+                t))
+                    l.order[e] && a.push(`${e}/${l.order[e]}`);
+                l.order = a;
+                break;
+            case "labang_search":
+                for (let e of (r = "/search2/show",
+                t = Object.keys(l.order),
+                a = [],
+                t))
+                    l.order[e] && a.push(`${e}/${l.order[e]}`);
+                l.order = a,
+                l.type = 1;
+                break;
+            case "labang":
+                r = "/search/labang";
+                break;
+            case "groupbuy_search":
+                r = "/groupbuy/search_groupbuys";
+                break;
+            case "groupbuy_channel":
+                r = "/groupbuy/get_channel_groupbuys",
+                l.size = 100;
+                break;
+            case "product":
+                r = "/search/product"
+            }
+            let s = await f(r, l);
+            s && ("hsshow_product" === e.type ? N.current = s.items : N.current = s.list,
+            M.current = e.params)
+        }
+          , R = async () => {
+            if (!N.current?.length)
+                return;
+            let e = {
+                labang_id_list: N.current.map(e => e.objectID)
+            }
+              , t = await f("/labang/url_replay", e);
+            t && (Y.current = t)
+        }
+          , E = async () => {
+            if (!N.current?.length)
+                return h({
+                    title: "알림",
+                    body: "다운로드를 진행할 데이터가 없습니다."
+                });
+            switch (e.type) {
+            case "labang_search":
+            case "labang":
+                await b({
+                    cats: o,
+                    list: N.current,
+                    replay_url_map: Y.current
+                });
+                break;
+            case "hsshow":
+                await j({
+                    list: N.current
+                });
+                break;
+            case "groupbuy_search":
+            case "groupbuy_channel":
+                await v({
+                    list: N.current
+                });
+                break;
+            default:
+                await k({
+                    type: ["product", "labang_product"].includes(e.type) ? "labang" : "hsshow",
+                    list: N.current
+                })
+            }
+        }
+          , D = async () => {
+            x(!0);
+            let t = e.params !== M.current;
+            (!N.current || t) && (await F(),
+            ["labang", "labang_search"].includes(e.type) && await R()),
+            await E(),
+            x(!1)
+        }
+          , S = async () => {
+            g(!0)
+        }
+        ;
+        return (0,
+        t.jsxs)(t.Fragment, {
+            children: [(0,
+            t.jsxs)("div", {
+                className: a.default.frame,
+                children: [(0,
+                t.jsx)(_.default, {
+                    src: "https://unpkg.com/exceljs@4.3.0/dist/exceljs.min.js"
+                }), (0,
+                t.jsxs)("div", {
+                    className: a.default.excel,
+                    children: [$ && (0,
+                    t.jsx)(n.default, {
+                        design: 3,
+                        text: "엑셀 다운로드",
+                        iconPath: "/__modules/Table/excel.svg",
+                        onClick: D
+                    }), !$ && (0,
+                    t.jsx)(c, {
+                        text: "엑셀 다운로드",
+                        iconPath: "/__modules/Table/excel.svg",
+                        onClick: S
+                    })]
+                }), (0,
+                t.jsx)(l.default, {
+                    options: w,
+                    onChange: e => d(e.value),
+                    selected: w[0],
+                    style: {
+                        height: "36px"
+                    }
+                })]
+            }), y && (0,
+            t.jsx)(u.default, {
+                type: "paywall",
+                onClose: () => g(!1)
+            })]
+        })
+    }
+    ], 22004)
+}
+, 72460, e => {
+    "use strict";
+    var t = e.i(91398)
+      , a = e.i(41365)
+      , l = e.i(21622)
+      , r = e.i(50051)
+      , s = e.i(828)
+      , i = e.i(98922);
+    e.i(68770);
+    var n = e.i(3828);
+    e.s(["default", 0, function({onClose: e}) {
+        let d = (0,
+        n.useRouter)();
+        return (0,
+        t.jsxs)(a.default, {
+            title: "알림",
+            children: [(0,
+            t.jsx)(l.default, {
+                body: "로그인이 필요합니다."
+            }), (0,
+            t.jsxs)(r.default, {
+                children: [(0,
+                t.jsx)(i.default, {
+                    onClick: e,
+                    marginRight: "12px"
+                }), (0,
+                t.jsx)(s.default, {
+                    text: "로그인",
+                    onClick: () => d.push("/user/sign_in")
+                })]
+            })]
+        })
+    }
+    ])
+}
+, 50349, e => {
+    e.v({
+        container: "Graph-module__GMtm7G__container",
+        title: "Graph-module__GMtm7G__title",
+        tooltip: "Graph-module__GMtm7G__tooltip"
+    })
+}
+, 58489, 40002, e => {
+    "use strict";
+    var t = e.i(91398)
+      , a = e.i(45246);
+    let l = ({children: e, half_only: l}) => {
+        let r = [];
+        e.length || (e = [e]);
+        for (let t = 0; t < e.length; t++) {
+            let a = Math.floor(t / 2);
+            t % 2 ? r[a].push(e[t]) : r[a] = [e[t]]
+        }
+        return (0,
+        t.jsxs)("div", {
+            className: a.default.dynamic([["ee07d14d29d09033", [e.length || l > 1 ? "470px" : "100%"]]]) + " container",
+            children: [r.map( (s, i) => (0,
+            t.jsx)("div", {
+                className: a.default.dynamic([["ee07d14d29d09033", [e.length || l > 1 ? "470px" : "100%"]]]) + " box",
+                children: r[i].map( (r, s) => (0,
+                t.jsx)("div", {
+                    className: a.default.dynamic([["ee07d14d29d09033", [e.length || l > 1 ? "470px" : "100%"]]]) + " graph",
+                    children: r
+                }, `graph${i}${s}`))
+            }, "box" + i)), (0,
+            t.jsx)(a.default, {
+                id: "ee07d14d29d09033",
+                dynamic: [e.length || l > 1 ? "470px" : "100%"],
+                children: `.container.__jsx-style-dynamic-selector>div.__jsx-style-dynamic-selector:first-child{margin-top:0}.box.__jsx-style-dynamic-selector{justify-content:space-between;margin-top:20px;display:flex}.graph.__jsx-style-dynamic-selector{width:${e.length || l > 1 ? "470px" : "100%"}}@media (width<=999px){.box.__jsx-style-dynamic-selector{display:block}.graph.__jsx-style-dynamic-selector{width:100%;margin-top:20px}.container.__jsx-style-dynamic-selector>div.__jsx-style-dynamic-selector:first-child>div.__jsx-style-dynamic-selector:first-child{margin-top:0}}`
+            })]
+        })
+    }
+    ;
+    l.displayName = "BatchGraphs",
+    e.s(["default", 0, l], 58489);
+    var r = e.i(50349)
+      , s = e.i(98368);
+    let i = ({title: e, tooltip: a}) => {
+        let l = (0,
+        s.default)(e => e.setTooltip);
+        return e ? (0,
+        t.jsxs)("div", {
+            className: r.default.title,
+            children: [(0,
+            t.jsx)("span", {
+                children: e
+            }), a && (0,
+            t.jsx)("span", {
+                className: r.default.tooltip,
+                onClick: e => {
+                    e.stopPropagation(),
+                    l({
+                        e,
+                        ...a
+                    })
+                }
+                ,
+                children: (0,
+                t.jsx)("i", {})
+            })]
+        }) : null
+    }
+    ;
+    i.displayName = "GraphTitle",
+    e.s(["default", 0, i], 40002)
+}
+, 60119, e => {
+    e.v({
+        ad_click: "Summary-module__IFoXaG__ad_click",
+        basic: "Summary-module__IFoXaG__basic",
+        blue: "Summary-module__IFoXaG__blue",
+        colorful: "Summary-module__IFoXaG__colorful",
+        four: "Summary-module__IFoXaG__four",
+        gray: "Summary-module__IFoXaG__gray",
+        green: "Summary-module__IFoXaG__green",
+        light_orange: "Summary-module__IFoXaG__light_orange",
+        mobile_inline: "Summary-module__IFoXaG__mobile_inline",
+        orange: "Summary-module__IFoXaG__orange",
+        pc_inline: "Summary-module__IFoXaG__pc_inline",
+        red: "Summary-module__IFoXaG__red",
+        row: "Summary-module__IFoXaG__row",
+        row_array: "Summary-module__IFoXaG__row_array",
+        row_desc: "Summary-module__IFoXaG__row_desc",
+        row_info: "Summary-module__IFoXaG__row_info",
+        summary: "Summary-module__IFoXaG__summary",
+        td: "Summary-module__IFoXaG__td",
+        td_list: "Summary-module__IFoXaG__td_list",
+        th: "Summary-module__IFoXaG__th",
+        tooltip: "Summary-module__IFoXaG__tooltip"
+    })
+}
+, 25363, e => {
+    "use strict";
+    var t = e.i(91398)
+      , a = e.i(60119)
+      , l = e.i(98368)
+      , r = e.i(3828);
+    let s = "array";
+    e.s(["TYPE_ARR", 0, s, "default", 0, function({data: e}) {
+        let i = (0,
+        l.default)(e => e.setTooltip)
+          , n = (0,
+        l.default)(e => e.user);
+        (0,
+        l.default)(e => e.Fetch);
+        let d = (0,
+        r.useRouter)()
+          , o = async e => {
+            gtag("event", "channel_click", {
+                ref: e
+            })
+        }
+        ;
+        return (0,
+        t.jsx)("article", {
+            className: a.default.summary,
+            children: e.map( (e, l) => (0,
+            t.jsxs)("div", {
+                className: `${a.default.row} ${e.type === s ? a.default.row_array : ""}`,
+                children: [(0,
+                t.jsxs)("div", {
+                    className: a.default.th,
+                    children: [(0,
+                    t.jsxs)("div", {
+                        className: a.default.row_info,
+                        children: [(0,
+                        t.jsx)("div", {
+                            children: e.name
+                        }), (0,
+                        t.jsx)("div", {
+                            className: a.default.tooltip,
+                            children: (0,
+                            t.jsx)("i", {
+                                onClick: t => {
+                                    var a;
+                                    return a = e.tooltip,
+                                    void (t.stopPropagation(),
+                                    i({
+                                        e: t,
+                                        ...a
+                                    }))
+                                }
+                            })
+                        })]
+                    }), e.description && (0,
+                    t.jsx)("span", {
+                        className: a.default.row_desc,
+                        children: e.description
+                    })]
+                }), (0,
+                t.jsx)("div", {
+                    className: `${a.default.td_list} ${4 === e.items.length ? a.default.four : ""}`,
+                    children: e.items.map( (r, i) => {
+                        let c = ["gray", "red", "orange", "blue", "green", "light_orange"].includes(r.color) ? "colorful" : "basic"
+                          , u = "colorful" === c ? r.color : null;
+                        if (e.type === s) {
+                            let e = `${a.default[c]} ${a.default[u]} ${a.default.ad_click}`;
+                            return r.link ? (0,
+                            t.jsx)("a", {
+                                onClick: () => {
+                                    o(r.channel_id)
+                                }
+                                ,
+                                href: r.link,
+                                className: e,
+                                children: r.value ?? "-"
+                            }, i) : (0,
+                            t.jsx)("td", {
+                                className: e
+                            }, i)
+                        }
+                        let _ = null == r.value ? "-" : r.renderValue ? r.renderValue() : r.value + (r.unit || "");
+                        return (0,
+                        t.jsxs)("div", {
+                            className: a.default.td,
+                            children: [(0,
+                            t.jsx)("div", {
+                                children: r.renderName ? r.renderName() : r.name
+                            }), (0,
+                            t.jsx)("div", {
+                                className: `${a.default[c]} ${r.lock && !n || r.mask || !u ? "" : a.default[u]}`,
+                                children: r.lock && !n ? (0,
+                                t.jsxs)("div", {
+                                    onClick: () => d.push("/user/sign_in"),
+                                    style: {
+                                        cursor: "pointer"
+                                    },
+                                    children: ["🔒 로그인 ", (0,
+                                    t.jsx)("span", {
+                                        className: a.default.pc_inline,
+                                        children: "필요"
+                                    })]
+                                }) : r.mask ? (0,
+                                t.jsxs)("div", {
+                                    onClick: () => d.push("/plan"),
+                                    style: {
+                                        cursor: "pointer"
+                                    },
+                                    children: ["🔒 요금제 ", (0,
+                                    t.jsx)("span", {
+                                        className: a.default.pc_inline
+                                    })]
+                                }) : r.no_crawl ? (0,
+                                t.jsx)(t.Fragment, {
+                                    children: "🚧"
+                                }) : _
+                            })]
+                        }, `summary_col_${l}_${i}`)
+                    }
+                    )
+                })]
+            }, `summary_row_${l}`))
+        })
+    }
+    ])
+}
+]);

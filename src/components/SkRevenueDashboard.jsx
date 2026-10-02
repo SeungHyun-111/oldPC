@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { onValue, ref } from 'firebase/database'
 import {
   Area,
   CartesianGrid,
@@ -11,9 +12,22 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
+import { rtdb } from '../firebaseClient'
 
 const OUTLIER_REVENUE_THRESHOLD = 30_000_000
 const OUTLIER_CORRECTION_WINDOW = 5
+const ZAPPING_SESSION_PATH = 'sessions/zapping-schedule-current'
+
+const zappingChannelDefs = [
+  { key: 'KBS', label: 'KBS2', aliases: ['KBS', 'KBS2'] },
+  { key: 'MBC', label: 'MBC', aliases: ['MBC'] },
+  { key: 'SBS', label: 'SBS', aliases: ['SBS'] },
+  { key: 'JTBC', label: 'JTBC', aliases: ['JTBC'] },
+  { key: 'MBN', label: 'MBN', aliases: ['MBN'] },
+  { key: 'TV조선', label: 'TV조선', aliases: ['TV조선', 'TV CHOSUN'] },
+  { key: '채널A', label: '채널A', aliases: ['채널A', 'Channel A'] },
+  { key: 'tvN', label: 'tvN', aliases: ['tvN'] },
+]
 
 const channelDefs = [
   { inventoryLabel: 'K쇼핑', sourceKey: 'ktalpha', key: 'kt', chartLabel: 'KT 알파 쇼핑', shortLabel: 'KT', color: '#1497ff' },
@@ -69,6 +83,65 @@ function getDeltaPoint(product, point, previous) {
     soldDelta,
     revenueDelta,
   }
+}
+
+function formatDateKey(value) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
+function minutesFromClock(value) {
+  const match = String(value || '').match(/^(\d{1,2}):?(\d{2})/)
+  if (!match) return null
+  const hour = Number(match[1])
+  const minute = Number(match[2])
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return null
+  return (hour % 24) * 60 + minute
+}
+
+function getZappingChannel(program) {
+  const values = [program?.channel, program?.channel_name].map((value) => String(value || '').trim())
+  return zappingChannelDefs.find((channel) => channel.aliases.some((alias) => values.includes(alias)))
+}
+
+function getZappingTitle(program) {
+  return String(program?.title || program?.program_title || program?.name || '').trim()
+}
+
+function getZappingProgramAt(program, windowStart) {
+  const minute = minutesFromClock(program?.time)
+  const dateKey = String(program?.date || '').trim()
+  if (minute === null || !dateKey || !windowStart) return null
+
+  const date = new Date(`${dateKey}T00:00:00`)
+  if (Number.isNaN(date.getTime())) return null
+  date.setHours(Math.floor(minute / 60), minute % 60, 0, 0)
+
+  return date.getTime()
+}
+
+function getZappingProgramAtForDate(program) {
+  const minute = minutesFromClock(program?.time)
+  const dateKey = String(program?.date || '').trim()
+  if (minute === null || !dateKey) return null
+
+  const date = new Date(`${dateKey}T00:00:00`)
+  if (Number.isNaN(date.getTime())) return null
+  date.setHours(Math.floor(minute / 60), minute % 60, 0, 0)
+  return date.getTime()
+}
+
+function useZappingSession() {
+  const [session, setSession] = useState(null)
+
+  useEffect(() => {
+    return onValue(ref(rtdb, ZAPPING_SESSION_PATH), (snapshot) => {
+      setSession(snapshot.val() || null)
+    })
+  }, [])
+
+  return session
 }
 
 function correctOutlierDeltas(deltas) {
@@ -486,6 +559,164 @@ function getTenMinuteTicks(data) {
   return ticks
 }
 
+function buildZappingRows(session, data, chartSize, chartMargin) {
+  if (!session?.programs?.length || !data.length || !chartSize.width || !chartSize.height) {
+    return { rows: [], plot: null }
+  }
+
+  const plot = getPlotBox(chartSize, chartMargin)
+  const windowStart = data[0]?.bucketAt || 0
+  const windowEnd = data.at(-1)?.bucketAt || windowStart
+  const visibleDates = new Set([
+    formatDateKey(windowStart - 24 * 60 * 60 * 1000),
+    formatDateKey(windowStart),
+    formatDateKey(windowEnd),
+    formatDateKey(windowEnd + 24 * 60 * 60 * 1000),
+  ])
+  const rows = zappingChannelDefs.map((channel) => ({ ...channel, points: [] }))
+  const rowByKey = new Map(rows.map((row) => [row.key, row]))
+
+  for (const program of session.programs || []) {
+    if (!visibleDates.has(String(program?.date || ''))) continue
+
+    const channel = getZappingChannel(program)
+    if (!channel) continue
+
+    const programAt = getZappingProgramAt(program, windowStart)
+    if (!programAt || programAt < windowStart || programAt > windowEnd) continue
+
+    const left = ((programAt - windowStart) / Math.max(windowEnd - windowStart, 1)) * 100
+    rowByKey.get(channel.key)?.points.push({
+      left: Math.max(0, Math.min(100, left)),
+      time: formatHourMinute(programAt),
+      title: getZappingTitle(program),
+    })
+  }
+
+  rows.forEach((row) => {
+    row.points.sort((a, b) => a.left - b.left || a.title.localeCompare(b.title, 'ko-KR'))
+  })
+
+  return { rows, plot }
+}
+
+function ZappingOverlay({ rows, plot }) {
+  if (!plot || !rows.length) return null
+
+  return (
+    <div
+      className="zappingChartOverlay"
+      style={{
+        left: `${plot.left}px`,
+        top: `${plot.top}px`,
+        width: `${Math.max(plot.right - plot.left, 1)}px`,
+        height: `${Math.max(plot.bottom - plot.top, 1)}px`,
+      }}
+    >
+      {rows.map((channel) => (
+        <div className="zappingChartRow" key={channel.key}>
+          <span className="zappingChartChannel">{channel.label}</span>
+          <div className="zappingChartTrack">
+            {channel.points.map((point, index) => (
+              <i
+                className="zappingChartDot"
+                key={`${channel.key}-${point.time}-${index}`}
+                style={{ '--dot-left': `${point.left}%` }}
+                title={`${channel.label} ${point.time} ${point.title}`.trim()}
+              >
+                <span className="zappingChartTooltip">
+                  <b>{channel.label}</b>
+                  <em>{point.time}</em>
+                  <strong>{point.title || '방송 시작'}</strong>
+                </span>
+              </i>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function buildZappingTickerItems(session, nowAt) {
+  if (!session?.programs?.length) return []
+
+  const currentMinute = Math.floor(nowAt / 60_000) * 60_000
+  const byChannel = new Map(zappingChannelDefs.map((channel) => [channel.key, []]))
+
+  for (const program of session.programs || []) {
+    const channel = getZappingChannel(program)
+    if (!channel) continue
+
+    const startAt = getZappingProgramAtForDate(program)
+    if (!startAt) continue
+
+    byChannel.get(channel.key)?.push({
+      channel: channel.label,
+      channelKey: channel.key,
+      startAt,
+      title: getZappingTitle(program) || '방송 시작',
+    })
+  }
+
+  byChannel.forEach((items) => {
+    items.sort((a, b) => a.startAt - b.startAt || a.title.localeCompare(b.title, 'ko-KR'))
+    items.forEach((item, index) => {
+      item.endAt = items[index + 1]?.startAt || null
+    })
+  })
+
+  return [...byChannel.values()]
+    .flat()
+    .filter((item) => item.startAt >= currentMinute)
+    .sort((a, b) => a.startAt - b.startAt || a.channel.localeCompare(b.channel, 'ko-KR'))
+    .slice(0, 18)
+}
+
+function ZappingTicker({ items }) {
+  const [index, setIndex] = useState(0)
+
+  useEffect(() => {
+    if (items.length <= 1) {
+      setIndex(0)
+      return undefined
+    }
+
+    const timer = window.setInterval(() => {
+      setIndex((current) => (current + 1) % items.length)
+    }, 3200)
+
+    return () => window.clearInterval(timer)
+  }, [items.length])
+
+  useEffect(() => {
+    setIndex(0)
+  }, [items])
+
+  if (!items.length) {
+    return (
+      <div className="zappingTicker" aria-label="재핑 전광판">
+        <span className="zappingTickerEmpty">재핑 편성 대기</span>
+      </div>
+    )
+  }
+
+  const current = items[index] || items[0]
+
+  return (
+    <div className="zappingTicker" aria-label="재핑 전광판">
+      <div className="zappingTickerWindow">
+        <div className="zappingTickerRail" key={`${current.channelKey}-${current.startAt}-${index}`}>
+          <span className="zappingTickerChannel">{current.channel}</span>
+          <span className="zappingTickerTime">{formatHourMinute(current.startAt)}</span>
+          <strong>{current.title}</strong>
+          <span className="zappingTickerEnd">{current.endAt ? formatHourMinute(current.endAt) : '-'}</span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function getLatestChannelPoint(data, channel, nowAt) {
   for (let index = data.length - 1; index >= 0; index -= 1) {
     const row = data[index]
@@ -773,6 +1004,7 @@ function avoidBadgeCollisions(points, axisMin, axisMax) {
 function CombinedRevenueChart({ products, collectedAt, programs, nowAt }) {
   const chartRef = useRef(null)
   const [chartSize, setChartSize] = useState({ width: 0, height: 0 })
+  const zappingSession = useZappingSession()
   const { data, programs: chartPrograms } = useMemo(
     () => buildMinuteChart(products, collectedAt, programs, nowAt),
     [collectedAt, nowAt, products, programs],
@@ -788,26 +1020,7 @@ function CombinedRevenueChart({ products, collectedAt, programs, nowAt }) {
     axisMin,
     axisMax,
   )
-  const highlights = channelDefs
-    .map((channel) => {
-      const peak = data.reduce(
-        (best, row, index) => {
-          const value = row[channel.key] || 0
-          return value > best.value
-            ? {
-                ...channel,
-                time: row.time,
-                value,
-                count: row[`${channel.key}Count`] || 0,
-                index,
-              }
-            : best
-        },
-        { value: 0 },
-      )
-      return peak.value > 0 ? peak : null
-    })
-    .filter(Boolean)
+  const highlights = []
   const overlayLayout = useMemo(
     () =>
       layoutGraphOverlays({
@@ -821,6 +1034,14 @@ function CombinedRevenueChart({ products, collectedAt, programs, nowAt }) {
         chartMargin,
       }),
     [axisMin, axisMax, chartPrograms, chartSize, currentPoints, data, highlights],
+  )
+  const zappingLayout = useMemo(
+    () => buildZappingRows(zappingSession, data, chartSize, chartMargin),
+    [chartSize, data, zappingSession],
+  )
+  const zappingTickerItems = useMemo(
+    () => buildZappingTickerItems(zappingSession, nowAt),
+    [nowAt, zappingSession],
   )
 
   useEffect(() => {
@@ -850,6 +1071,7 @@ function CombinedRevenueChart({ products, collectedAt, programs, nowAt }) {
           ))}
           <span className="legend-note">3천만원 이상/분은 예외값으로 앞뒤 5분 평균 보정</span>
         </div>
+        <ZappingTicker items={zappingTickerItems} />
       </div>
 
       <div className="chart-wrapper" ref={chartRef}>
@@ -862,26 +1084,12 @@ function CombinedRevenueChart({ products, collectedAt, programs, nowAt }) {
               opacity="0.58"
             />
           ))}
-          {overlayLayout.connectors.map((connector) => (
-            <g key={connector.key}>
-              <path
-                d={`M ${connector.start.x} ${connector.start.y} L ${(connector.start.x + connector.end.x) / 2} ${connector.start.y} L ${connector.end.x} ${connector.end.y}`}
-                stroke={connector.color}
-              />
-              <circle cx={connector.start.x} cy={connector.start.y} r="12" fill={connector.color} opacity="0.16" />
-              <circle cx={connector.start.x} cy={connector.start.y} r="6" fill={connector.color} stroke="#fff" strokeWidth="1.5" />
-              <circle cx={connector.end.x} cy={connector.end.y} r="3" fill={connector.color} />
-            </g>
-          ))}
         </svg>
         <div className="programLabelLayer">
           {overlayLayout.programs.map((program, index) => (
             <ProgramLabelOverlay key={`${program.channel}-${program.bucketAt}-${index}`} program={program} />
           ))}
         </div>
-        {overlayLayout.highlights.map((point) => (
-          <Highlight key={point.key} point={point} />
-        ))}
 
         <ResponsiveContainer width="100%" height="100%">
           <ComposedChart data={data} margin={chartMargin}>
@@ -920,7 +1128,7 @@ function CombinedRevenueChart({ products, collectedAt, programs, nowAt }) {
               ticks={ticks}
               width={96}
               tickFormatter={formatKRW}
-              tick={{ fill: '#91a5bd', fontSize: 11 }}
+              tick={false}
               axisLine={false}
               tickLine={false}
               allowDataOverflow
@@ -998,6 +1206,8 @@ function CombinedRevenueChart({ products, collectedAt, programs, nowAt }) {
 
           </ComposedChart>
         </ResponsiveContainer>
+
+        <ZappingOverlay rows={zappingLayout.rows} plot={zappingLayout.plot} />
 
         <div className="current-values">
           {currentPoints
