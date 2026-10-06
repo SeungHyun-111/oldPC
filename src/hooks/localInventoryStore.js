@@ -1,32 +1,14 @@
-const dbName = 'oldpc-local'
-const dbVersion = 1
-const storeName = 'inventories'
 const memoryStore = new Map()
+const apiBaseUrl = import.meta.env.VITE_OLDPC_API_BASE_URL || 'http://127.0.0.1:4174'
 export const localInventoryEvent = 'oldpc:inventory-updated'
 
-function openDb() {
-  return new Promise((resolve, reject) => {
-    const request = window.indexedDB.open(dbName, dbVersion)
-    request.onupgradeneeded = () => {
-      request.result.createObjectStore(storeName)
-    }
-    request.onsuccess = () => resolve(request.result)
-    request.onerror = () => reject(request.error)
-  })
-}
-
 export async function getLocalInventory(channel) {
-  if (!window.indexedDB) return memoryStore.get(channel) || null
-
   try {
-    const db = await openDb()
-    return await new Promise((resolve, reject) => {
-      const transaction = db.transaction(storeName, 'readonly')
-      const request = transaction.objectStore(storeName).get(channel)
-      request.onsuccess = () => resolve(request.result || null)
-      request.onerror = () => reject(request.error)
-      transaction.oncomplete = () => db.close()
-    })
+    const response = await fetch(`${apiBaseUrl}/api/local-inventory/${channel}`, { cache: 'no-store' })
+    const payload = await response.json()
+    if (!response.ok) throw new Error(payload.error || `local inventory read failed: ${response.status}`)
+    memoryStore.set(channel, payload)
+    return payload
   } catch {
     return memoryStore.get(channel) || null
   }
@@ -35,21 +17,16 @@ export async function getLocalInventory(channel) {
 export async function setLocalInventory(channel, inventory) {
   memoryStore.set(channel, inventory)
 
-  if (window.indexedDB) {
-    try {
-      const db = await openDb()
-      await new Promise((resolve, reject) => {
-        const transaction = db.transaction(storeName, 'readwrite')
-        transaction.objectStore(storeName).put(inventory, channel)
-        transaction.oncomplete = () => {
-          db.close()
-          resolve()
-        }
-        transaction.onerror = () => reject(transaction.error)
-      })
-    } catch {
-      // Keep the in-memory copy so the live screen can continue for this tab.
-    }
+  try {
+    const response = await fetch(`${apiBaseUrl}/api/local-inventory/${channel}`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(inventory),
+    })
+    const payload = await response.json()
+    if (!response.ok) throw new Error(payload.error || `local inventory save failed: ${response.status}`)
+  } catch (error) {
+    console.error(error)
   }
 
   window.dispatchEvent(new CustomEvent(localInventoryEvent, { detail: { channel, inventory } }))
