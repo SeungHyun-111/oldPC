@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { onValue, ref } from 'firebase/database'
-import { rtdb, rtdbBasePath } from '../firebaseClient'
 import { scheduleSources } from '../sources/scheduleSources'
+
+const apiBaseUrl = import.meta.env.VITE_OLDPC_API_BASE_URL || 'http://127.0.0.1:4174'
+const refreshMs = Number(import.meta.env.VITE_OLDPC_SCHEDULE_REFRESH_MS || 60_000)
 
 function createEmptySchedule() {
   return {
@@ -21,11 +22,17 @@ export function useSchedules() {
   )
 
   useEffect(() => {
-    const unsubscribes = scheduleSources.map((source) =>
-      onValue(
-        ref(rtdb, `${rtdbBasePath}/channels/${source.key}/schedule`),
-        (snapshot) => {
-          const payload = snapshot.val() || {}
+    let stopped = false
+    let timer = null
+
+    async function refreshSchedules() {
+      await Promise.all(scheduleSources.map(async (source) => {
+        try {
+          const response = await fetch(`${apiBaseUrl}${source.endpoint}`, { cache: 'no-store' })
+          const payload = await response.json()
+          if (!response.ok) throw new Error(payload.error || `${source.endpoint} returned ${response.status}`)
+          if (stopped) return
+
           setSchedules((current) => ({
             ...current,
             [source.key]: {
@@ -38,8 +45,8 @@ export function useSchedules() {
               error: payload.error || '',
             },
           }))
-        },
-        (error) => {
+        } catch (error) {
+          if (stopped) return
           setSchedules((current) => ({
             ...current,
             [source.key]: {
@@ -47,12 +54,16 @@ export function useSchedules() {
               error: error.message,
             },
           }))
-        },
-      ),
-    )
+        }
+      }))
+    }
+
+    refreshSchedules()
+    timer = window.setInterval(refreshSchedules, refreshMs)
 
     return () => {
-      unsubscribes.forEach((unsubscribe) => unsubscribe())
+      stopped = true
+      if (timer) window.clearInterval(timer)
     }
   }, [])
 

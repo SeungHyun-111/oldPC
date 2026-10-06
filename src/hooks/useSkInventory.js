@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
-import { onValue, ref } from 'firebase/database'
-import { rtdb, rtdbBasePath } from '../firebaseClient'
+import { getLocalInventory, localInventoryEvent } from './localInventoryStore'
 
 const emptyInventory = {
   broadcaster: '',
@@ -14,18 +13,27 @@ export function useChannelInventory(channel, broadcaster) {
   const [inventory, setInventory] = useState({ ...emptyInventory, broadcaster })
 
   useEffect(() => {
-    const unsubscribe = onValue(
-      ref(rtdb, `${rtdbBasePath}/channels/${channel}/inventory`),
-      (snapshot) => {
-        setInventory({ ...emptyInventory, broadcaster, ...(snapshot.val() || {}) })
-      },
-      (error) => {
-        setInventory((current) => ({ ...current, error: error.message }))
-      },
-    )
+    const applyInventory = (payload) => {
+      setInventory({ ...emptyInventory, broadcaster, ...(payload || {}) })
+    }
+
+    getLocalInventory(channel).then(applyInventory)
+
+    function handleLocalInventory(event) {
+      if (event.detail?.channel === channel) applyInventory(event.detail.inventory)
+    }
+
+    function handleStorage(event) {
+      if (event.key !== `oldpc.inventory.${channel}`) return
+      getLocalInventory(channel).then(applyInventory)
+    }
+
+    window.addEventListener(localInventoryEvent, handleLocalInventory)
+    window.addEventListener('storage', handleStorage)
 
     return () => {
-      unsubscribe()
+      window.removeEventListener(localInventoryEvent, handleLocalInventory)
+      window.removeEventListener('storage', handleStorage)
     }
   }, [broadcaster, channel])
 

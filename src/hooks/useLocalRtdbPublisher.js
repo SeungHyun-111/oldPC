@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
-import { get, ref, set, update } from 'firebase/database'
+import { ref, set, update } from 'firebase/database'
 import { rtdb, rtdbBasePath } from '../firebaseClient'
 import { scheduleSources } from '../sources/scheduleSources'
+import { getLocalInventory, setLocalInventory } from './localInventoryStore'
 
 const apiBaseUrl = import.meta.env.VITE_OLDPC_API_BASE_URL || 'http://127.0.0.1:4174'
 const publishIntervalMs = Number(import.meta.env.VITE_OLDPC_PUBLISH_INTERVAL_MS || 60_000)
-const historyWindowMs = 14 * 24 * 60 * 60 * 1000
+const liveWindowMs = 120 * 60 * 1000
 const endBufferMs = 60 * 1000
 const outlierRevenueThreshold = 30_000_000
 const publishSecond = 55
@@ -16,6 +17,7 @@ const inventorySources = [
   { key: 'shinsegae', endpoint: '/api/shinsegae/inventory' },
   { key: 'ktalpha', endpoint: '/api/ktalpha/inventory' },
 ]
+const zappingLiveWindowMs = 6 * 60 * 60 * 1000
 
 function canPublishFromThisPage() {
   if (import.meta.env.VITE_OLDPC_BROWSER_PUBLISH === '0') return false
@@ -128,12 +130,10 @@ function getLastActiveSnapshot(history, startAt, endAt) {
 }
 
 function normalizeHistory(history, collectedAt, cycleBucketAt) {
-  const cutoffAt = getMinuteBucketAt(collectedAt - historyWindowMs)
   const byBucket = new Map()
 
   for (const point of getHistory(history).sort((a, b) => (a.collectedAt || 0) - (b.collectedAt || 0))) {
     const bucketAt = getPointBucketAt(point, cycleBucketAt)
-    if (bucketAt < cutoffAt) continue
 
     const previous = byBucket.get(bucketAt)
     const rawSoldDelta = point.soldDelta || 0
@@ -321,6 +321,82 @@ function mergeInventoryPayload(nextInventory, previousInventory, cycleBucketAt) 
   }
 }
 
+function trimInventoryForLive(inventory, nowAt = Date.now()) {
+  const cutoffAt = getMinuteBucketAt(nowAt - liveWindowMs)
+  const products = getProducts(inventory)
+    .map((product) => ({
+      ...product,
+      history: getHistory(product.history).filter((point) => getPointBucketAt(point, nowAt) >= cutoffAt),
+    }))
+    .filter((product) => product.history.length || (product.broadcastEndAt || 0) >= nowAt - liveWindowMs)
+
+  return {
+    ...inventory,
+    products,
+    windowMinutes: Math.round(liveWindowMs / 60_000),
+    retentionDays: undefined,
+    historySourcePath: 'inventoryHistory/current',
+  }
+}
+
+function buildZappingLive(inventory, nowAt = Date.now()) {
+  const cutoffAt = getMinuteBucketAt(nowAt - zappingLiveWindowMs)
+  const byBucket = new Map()
+  const activeProductsByBucket = new Map()
+
+  for (const product of getProducts(inventory)) {
+    const productKey = product.productId || product.rowId || product.productName
+    for (const point of getHistory(product.history)) {
+      const bucketAt = getPointBucketAt(point, nowAt)
+      if (!bucketAt || bucketAt < cutoffAt) continue
+      if (!isPointInProductWindow(product, bucketAt)) continue
+
+      const soldDelta = Math.max(Number(point.soldDelta || 0), 0)
+      const revenueDelta = Math.max(Number(point.revenueDelta ?? soldDelta * (point.price || product.price || 0)), 0)
+      if (!soldDelta && !revenueDelta) continue
+
+      const current = byBucket.get(bucketAt) || { bucketAt, revenue: 0, sold: 0 }
+      current.revenue += revenueDelta
+      current.sold += soldDelta
+      byBucket.set(bucketAt, current)
+
+      if (productKey) {
+        if (!activeProductsByBucket.has(bucketAt)) activeProductsByBucket.set(bucketAt, new Set())
+        activeProductsByBucket.get(bucketAt).add(productKey)
+      }
+    }
+  }
+
+  const points = [...byBucket.values()]
+    .sort((a, b) => a.bucketAt - b.bucketAt)
+    .map((point) => ({
+      ...point,
+      activeProductCount: activeProductsByBucket.get(point.bucketAt)?.size || 0,
+    }))
+
+  return {
+    collectedAt: inventory?.collectedAt || nowAt,
+    updatedAt: nowAt,
+    windowMinutes: Math.round(zappingLiveWindowMs / 60_000),
+    points,
+    totals: points.reduce(
+      (sum, point) => ({
+        revenue: sum.revenue + (point.revenue || 0),
+        sold: sum.sold + (point.sold || 0),
+        activeProductCount: Math.max(sum.activeProductCount, point.activeProductCount || 0),
+      }),
+      { revenue: 0, sold: 0, activeProductCount: 0 },
+    ),
+  }
+}
+
+function isPointInProductWindow(product, bucketAt) {
+  const startAt = product?.broadcastStartAt || 0
+  const endAt = product?.broadcastEndAt || 0
+  if (!startAt || !endAt) return true
+  return startAt <= bucketAt && bucketAt < endAt
+}
+
 function sanitizeFirebaseValue(value) {
   if (value === undefined) return null
   if (Array.isArray(value)) return value.map(sanitizeFirebaseValue)
@@ -358,24 +434,24 @@ async function publishOnce() {
   const cycleBucketAt = getMinuteBucketAt(inventoryStartedAt)
 
   for (const source of inventorySources) {
-    const inventoryRef = ref(rtdb, `${rtdbBasePath}/channels/${source.key}/inventory`)
     try {
       const inventory = await fetchJson(source.endpoint)
-      const previousInventory = (await get(inventoryRef)).val()
-      await set(inventoryRef, sanitizeFirebaseValue(mergeInventoryPayload(inventory, previousInventory, cycleBucketAt)))
+      const previousInventory = await getLocalInventory(source.key)
+      const mergedInventory = sanitizeFirebaseValue(mergeInventoryPayload(inventory, previousInventory, cycleBucketAt))
+      await setLocalInventory(source.key, mergedInventory)
+      if (source.key === 'skstoa') {
+        await set(ref(rtdb, `${rtdbBasePath}/channels/${source.key}/zappingLive`), sanitizeFirebaseValue(buildZappingLive(mergedInventory, inventoryStartedAt)))
+      }
     } catch (error) {
       channelErrors.push(`${source.key} inventory: ${error.message}`)
-      const previousInventory = (await get(inventoryRef)).val()
+      const previousInventory = await getLocalInventory(source.key)
       if (previousInventory) {
-        await set(
-          inventoryRef,
-          sanitizeFirebaseValue({
-            ...previousInventory,
-            attemptedAt: Date.now(),
-            status: 'error',
-            error: error.message,
-          }),
-        )
+        await setLocalInventory(source.key, sanitizeFirebaseValue({
+          ...previousInventory,
+          attemptedAt: Date.now(),
+          status: 'error',
+          error: error.message,
+        }))
       }
       await set(ref(rtdb, `${rtdbBasePath}/channels/${source.key}/inventoryError`), {
         message: error.message,
