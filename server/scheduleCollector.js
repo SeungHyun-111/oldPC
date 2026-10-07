@@ -97,6 +97,13 @@ function shouldRefreshSchedule(channel, currentSlot, dateHourKey, force, now) {
   return Boolean(channelState.lastRefreshError) && now - (channelState.lastRefreshAttemptAt || 0) >= failedRefreshRetryMs
 }
 
+function createRefreshWaitingError(channelState) {
+  const suffix = channelState.lastRefreshError ? `; lastError=${channelState.lastRefreshError}` : ''
+  const error = new Error(`Schedule refresh waiting${suffix}`)
+  error.code = 'SCHEDULE_REFRESH_WAITING'
+  return error
+}
+
 function isScheduleCacheCompatible(channel, payload) {
   if (!payload || !Array.isArray(payload.items)) return false
   const expectedCacheVersion = channels[channel]?.cacheVersion
@@ -140,7 +147,7 @@ export async function collectSchedule(channel, options = {}) {
   }
 
   if (!shouldRefreshSchedule(channel, timing.currentSlot, hourKey, options.force, now) && !channelState.memorySchedule?.items?.length) {
-    throw new Error(channelState.lastRefreshError || '편성표 수집 대기 중')
+    throw createRefreshWaitingError(channelState)
   }
 
   channelState.lastRefreshAttemptKey = hourKey
@@ -177,9 +184,13 @@ export async function collectScheduleWithFallback(channel, options = {}) {
     const nowDate = new Date()
     const hourKey = getDateHourKey(nowDate)
     const timing = getScheduleTiming(nowDate)
-    channelState.lastRefreshAttemptKey = hourKey
-    channelState.lastRefreshAttemptAt = nowDate.getTime()
-    channelState.lastRefreshError = error.message
+    const isWaiting = error.code === 'SCHEDULE_REFRESH_WAITING'
+    if (!isWaiting) {
+      channelState.lastRefreshAttemptKey = hourKey
+      channelState.lastRefreshAttemptAt = nowDate.getTime()
+      channelState.lastRefreshError = error.message
+    }
+    const message = isWaiting && channelState.lastRefreshError ? channelState.lastRefreshError : error.message
 
     if (Array.isArray(channelState?.memorySchedule?.items) && channelState.memorySchedule.items.length) {
       return {
@@ -189,7 +200,9 @@ export async function collectScheduleWithFallback(channel, options = {}) {
         remoteFetchCount: channelState.remoteFetchCount,
         nextRefreshAt: timing.nextRefreshAt,
         refreshSlots: scheduleSlots,
-        error: error.message,
+        error: message,
+        lastRefreshError: channelState.lastRefreshError || '',
+        lastRefreshAttemptAt: channelState.lastRefreshAttemptAt || null,
       }
     }
 
@@ -201,7 +214,9 @@ export async function collectScheduleWithFallback(channel, options = {}) {
       remoteFetchCount: channelState?.remoteFetchCount || 0,
       nextRefreshAt: timing.nextRefreshAt,
       refreshSlots: scheduleSlots,
-      error: error.message,
+      error: message,
+      lastRefreshError: channelState.lastRefreshError || '',
+      lastRefreshAttemptAt: channelState.lastRefreshAttemptAt || null,
     }
   }
 }
