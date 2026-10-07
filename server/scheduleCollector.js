@@ -8,6 +8,7 @@ import { fetchSkstoaSchedule } from './skstoaSchedule.js'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const cacheDir = path.join(__dirname, 'cache')
 const scheduleCacheVersion = 3
+const failedRefreshRetryMs = 30_000
 
 export const scheduleSlots = ['hourly']
 
@@ -32,7 +33,7 @@ export const channels = {
 export const scheduleState = Object.fromEntries(
   Object.keys(channels).map((key) => [
     key,
-    { memorySchedule: null, remoteFetchCount: 0, lastRefreshAttemptKey: '', lastRefreshError: '' },
+    { memorySchedule: null, remoteFetchCount: 0, lastRefreshAttemptKey: '', lastRefreshAttemptAt: 0, lastRefreshError: '' },
   ]),
 )
 
@@ -87,11 +88,13 @@ function hasRefreshedThisHour(channel, dateHourKey) {
   return scheduleState[channel].memorySchedule?.refreshHour === dateHourKey
 }
 
-function shouldRefreshSchedule(channel, currentSlot, dateHourKey, force) {
+function shouldRefreshSchedule(channel, currentSlot, dateHourKey, force, now) {
   if (force) return true
   if (!currentSlot) return false
   const channelState = scheduleState[channel]
-  return !hasRefreshedThisHour(channel, dateHourKey) && channelState.lastRefreshAttemptKey !== dateHourKey
+  if (hasRefreshedThisHour(channel, dateHourKey)) return false
+  if (channelState.lastRefreshAttemptKey !== dateHourKey) return true
+  return Boolean(channelState.lastRefreshError) && now - (channelState.lastRefreshAttemptAt || 0) >= failedRefreshRetryMs
 }
 
 function isScheduleCacheCompatible(channel, payload) {
@@ -120,9 +123,10 @@ export async function collectSchedule(channel, options = {}) {
   }
 
   if (
-    !shouldRefreshSchedule(channel, timing.currentSlot, hourKey, options.force) &&
+    !shouldRefreshSchedule(channel, timing.currentSlot, hourKey, options.force, now) &&
     channelState.memorySchedule &&
-    isScheduleCacheCompatible(channel, channelState.memorySchedule)
+    isScheduleCacheCompatible(channel, channelState.memorySchedule) &&
+    channelState.memorySchedule.items.length
   ) {
     return {
       ...channelState.memorySchedule,
@@ -135,12 +139,16 @@ export async function collectSchedule(channel, options = {}) {
     }
   }
 
-  if (!shouldRefreshSchedule(channel, timing.currentSlot, hourKey, options.force) && !channelState.memorySchedule) {
+  if (!shouldRefreshSchedule(channel, timing.currentSlot, hourKey, options.force, now) && !channelState.memorySchedule?.items?.length) {
     throw new Error(channelState.lastRefreshError || '편성표 수집 대기 중')
   }
 
   channelState.lastRefreshAttemptKey = hourKey
+  channelState.lastRefreshAttemptAt = now
   const items = await config.fetcher()
+  if (!Array.isArray(items) || !items.length) {
+    throw new Error(`${channel} schedule returned no items`)
+  }
   channelState.remoteFetchCount += 1
   channelState.lastRefreshError = ''
   const payload = {
@@ -170,6 +178,7 @@ export async function collectScheduleWithFallback(channel, options = {}) {
     const hourKey = getDateHourKey(nowDate)
     const timing = getScheduleTiming(nowDate)
     channelState.lastRefreshAttemptKey = hourKey
+    channelState.lastRefreshAttemptAt = nowDate.getTime()
     channelState.lastRefreshError = error.message
 
     if (Array.isArray(channelState?.memorySchedule?.items) && channelState.memorySchedule.items.length) {
