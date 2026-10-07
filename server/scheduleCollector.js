@@ -92,9 +92,9 @@ function shouldRefreshSchedule(channel, currentSlot, dateHourKey, force, now) {
   if (force) return true
   if (!currentSlot) return false
   const channelState = scheduleState[channel]
+  if (!channelState.memorySchedule?.items?.length) return true
   if (hasRefreshedThisHour(channel, dateHourKey)) return false
   if (channelState.lastRefreshAttemptKey !== dateHourKey) return true
-  if (!channelState.memorySchedule?.items?.length) return true
   return Boolean(channelState.lastRefreshError) && now - (channelState.lastRefreshAttemptAt || 0) >= failedRefreshRetryMs
 }
 
@@ -110,7 +110,7 @@ function isScheduleCacheCompatible(channel, payload) {
   const expectedCacheVersion = channels[channel]?.cacheVersion
   if (expectedCacheVersion && payload.cacheVersion !== expectedCacheVersion) return false
   if (channel !== 'shinsegae') return true
-  if (!payload.items.length) return true
+  if (!payload.items.length) return false
   return payload.items.some((item) => Object.hasOwn(item, 'isMainProduct'))
 }
 
