@@ -94,6 +94,7 @@ function shouldRefreshSchedule(channel, currentSlot, dateHourKey, force, now) {
   const channelState = scheduleState[channel]
   if (hasRefreshedThisHour(channel, dateHourKey)) return false
   if (channelState.lastRefreshAttemptKey !== dateHourKey) return true
+  if (!channelState.memorySchedule?.items?.length) return true
   return Boolean(channelState.lastRefreshError) && now - (channelState.lastRefreshAttemptAt || 0) >= failedRefreshRetryMs
 }
 
