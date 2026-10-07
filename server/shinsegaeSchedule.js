@@ -120,7 +120,11 @@ export function parseShinsegaeSchedule(html) {
 export async function fetchShinsegaeSchedule(datePath = getTodayPath()) {
   const url = `${SCHEDULE_URL}?fromDate=${encodeURIComponent(datePath)}`
   const html = await fetchText(url)
-  return parseShinsegaeSchedule(html)
+  const items = parseShinsegaeSchedule(html)
+  if (!items.length) {
+    throw new Error(`Shinsegae schedule parsed 0 items from ${url}; htmlLength=${html.length}; preview=${html.slice(0, 200)}`)
+  }
+  return items
 }
 
 function fetchText(url) {
@@ -143,7 +147,7 @@ function fetchText(url) {
         })
         response.on('end', () => {
           if (response.statusCode < 200 || response.statusCode >= 300) {
-            reject(new Error(`신세계 편성표 요청 실패: ${response.statusCode}`))
+            reject(new Error(`Shinsegae schedule request failed: status=${response.statusCode}; url=${url}; body=${body.slice(0, 300)}`))
             return
           }
           resolve(body)
@@ -153,7 +157,7 @@ function fetchText(url) {
 
     request.on('error', reject)
     request.setTimeout(15000, () => {
-      request.destroy(new Error('신세계 편성표 요청 시간 초과'))
+      request.destroy(new Error(`Shinsegae schedule request timeout: url=${url}; timeoutMs=15000`))
     })
   })
 }

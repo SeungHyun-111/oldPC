@@ -27,10 +27,22 @@ export function useSchedules() {
 
     async function refreshSchedules() {
       await Promise.all(scheduleSources.map(async (source) => {
+        const requestUrl = `${apiBaseUrl}${source.endpoint}`
         try {
-          const response = await fetch(`${apiBaseUrl}${source.endpoint}`, { cache: 'no-store' })
-          const payload = await response.json()
-          if (!response.ok) throw new Error(payload.error || `${source.endpoint} returned ${response.status}`)
+          const response = await fetch(requestUrl, { cache: 'no-store' })
+          const payload = await response.json().catch(() => ({}))
+          if (!response.ok) {
+            console.error('[oldPC schedule fetch failed]', {
+              channel: source.key,
+              label: source.label,
+              requestUrl,
+              status: response.status,
+              statusText: response.statusText,
+              serverError: payload.error || '',
+              response: payload,
+            })
+            throw new Error(payload.error || `${source.endpoint} returned ${response.status}`)
+          }
           if (stopped) return
 
           setSchedules((current) => ({
@@ -47,6 +59,13 @@ export function useSchedules() {
           }))
         } catch (error) {
           if (stopped) return
+          console.error('[oldPC schedule error]', {
+            channel: source.key,
+            label: source.label,
+            requestUrl,
+            message: error.message,
+            error,
+          })
           setSchedules((current) => ({
             ...current,
             [source.key]: {
